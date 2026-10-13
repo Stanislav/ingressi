@@ -330,7 +330,6 @@ export type SortDir = SortDirection;
 
 /** Sort keys of the earlier list, still accepted in links. */
 const LEGACY_SORT_KEYS: Record<string, SortKey> = {
-  name: "host",
   domains: "host",
   upstreams: "host",
   enabled: "status",
@@ -340,6 +339,7 @@ const LEGACY_SORT_KEYS: Record<string, SortKey> = {
 export const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
   requests: "desc",
   host: "asc",
+  name: "asc",
   status: "asc",
   errors: "desc",
   created: "desc",
@@ -348,6 +348,7 @@ export const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
 export const SORT_LABELS: Record<SortKey, string> = {
   requests: "requests in 24 hours",
   host: "host name",
+  name: "name",
   status: "status",
   errors: "5xx rate",
   created: "date added",
@@ -457,6 +458,7 @@ export function sortHostRows(rows: readonly HostListRow[], sortBy: SortKey, sort
     status: (a, b) => stateRank(a) - stateRank(b),
     created: (a, b) => a.createdAt.localeCompare(b.createdAt),
     host: byHost,
+    name: (a, b) => a.name.localeCompare(b.name),
   };
   const sign = sortDir === "asc" ? 1 : -1;
   return [...rows].sort((a, b) => sign * compare[sortBy](a, b) || byHost(a, b));
