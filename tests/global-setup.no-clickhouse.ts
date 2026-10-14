@@ -2,6 +2,7 @@ import { chromium } from '@playwright/test';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { composeBuildFlags } from './helpers/e2e-stack';
 
 const COMPOSE_ARGS = [
   'compose',
@@ -88,7 +89,7 @@ export default async function globalSetup() {
   console.log('[global-setup-no-ch] Starting Docker Compose test stack (no ClickHouse)...');
   execFileSync('docker', [
     ...COMPOSE_ARGS,
-    'up', '-d', '--build',
+    'up', '-d', ...composeBuildFlags(),
     '--wait', '--wait-timeout', '120',
   ], {
     stdio: 'inherit',

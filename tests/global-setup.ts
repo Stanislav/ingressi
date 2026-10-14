@@ -2,7 +2,7 @@ import { chromium } from '@playwright/test';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { composeArgs, composeEnv, e2eStack } from './helpers/e2e-stack';
+import { composeArgs, composeBuildFlags, composeEnv, e2eStack } from './helpers/e2e-stack';
 
 // The SQLite stack, or with E2E_STACK=postgres the same stack with the
 // dashboard on PostgreSQL (tests/playwright.pg.config.ts).
@@ -96,7 +96,7 @@ export default async function globalSetup() {
   console.log(`[global-setup] Starting Docker Compose test stack (${e2eStack()})...`);
   execFileSync('docker', [
     ...COMPOSE_ARGS,
-    'up', '-d', '--build',
+    'up', '-d', ...composeBuildFlags(),
     '--wait', '--wait-timeout', '120',
   ], {
     stdio: 'inherit',

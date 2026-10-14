@@ -1,0 +1,168 @@
+name: E2E
+
+# The Playwright suite against the real Docker Compose stack: the dashboard on
+# SQLite, on PostgreSQL, and two dashboard replicas on one PostgreSQL. The
+# three images are built once and loaded into every job under the tags the
+# compose files name, so no job builds them again (E2E_SKIP_BUILD).
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - "documentation/**"
+      - "**/*.md"
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - "documentation/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  # A newer push to a pull request replaces its run; runs on main and develop all finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The test stack needs no credentials and no repo secrets: its passwords are
+# the test values of tests/docker-compose.test.yml.
+permissions: {}
+
+jobs:
+  images:
+    name: Image (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        service:
+          - web
+          - caddy
+          - l4-port-manager
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Compute app version
+        id: app-version
+        run: echo "version=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # The tag is the one docker-compose.yml names (not derived from the
+      # repository owner, so a fork's run uses its own build too).
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/${{ matrix.service }}/Dockerfile
+          push: false
+          tags: ghcr.io/ingres-si/ingressi-${{ matrix.service }}:latest
+          build-args: |
+            APP_VERSION=${{ steps.app-version.outputs.version }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.service }}.tar
+          cache-from: type=gha,scope=${{ matrix.service }}
+
+      - name: Upload image
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ runner.temp }}/${{ matrix.service }}.tar
+          retention-days: 1
+          compression-level: 1
+          if-no-files-found: error
+
+  e2e:
+    name: E2E (${{ matrix.stack }})
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stack: sqlite
+            script: test:e2e
+          - stack: postgres
+            script: test:e2e:pg
+          - stack: replicas
+            script: test:e2e:replicas
+    env:
+      # Images are loaded below; the stack is left up when the run ends so a failure can show its logs.
+      E2E_SKIP_BUILD: "1"
+      E2E_KEEP_STACK: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # The stack's images and the browsers need more than a runner has free.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
+          df -h /
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install browsers
+        run: bunx playwright install --with-deps chromium webkit
+
+      - name: Download images
+        uses: actions/download-artifact@v8
+        with:
+          pattern: image-*
+          path: ${{ runner.temp }}/images
+          merge-multiple: true
+
+      - name: Load images
+        run: |
+          for image in "$RUNNER_TEMP"/images/*.tar; do docker load --input "$image"; done
+          docker image ls
+
+      # Compose interpolates these in the project directory, including the
+      # L4 port manager's own `docker compose` runs; they are the test values
+      # of tests/docker-compose.test.yml.
+      - name: Write the compose environment
+        run: |
+          cat > .env <<'EOF'
+          SESSION_SECRET=test-session-secret-32chars!xxxY
+          ADMIN_USERNAME=testadmin
+          ADMIN_PASSWORD=TestPassword2026!
+          CLICKHOUSE_PASSWORD=test-clickhouse-password-2026
+          COMPOSE_PROFILES=clickhouse
+          EOF
+
+      - name: Run the E2E suite
+        run: bun run ${{ matrix.script }}
+
+      - name: Collect container logs
+        if: failure()
+        run: |
+          mkdir -p container-logs
+          for name in $(docker ps --all --format '{{.Names}}'); do
+            docker logs "$name" > "container-logs/$name.log" 2>&1 || true
+          done
+
+      - name: Upload failure details
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-${{ matrix.stack }}-failure
+          path: |
+            test-results
+            container-logs
+          retention-days: 7
+          if-no-files-found: ignore

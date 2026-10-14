@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { rmSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { keepStack } from './helpers/e2e-stack';
 
 const COMPOSE_ARGS = [
   'compose',
@@ -9,6 +10,10 @@ const COMPOSE_ARGS = [
 ];
 
 export default async function globalTeardown() {
+  if (keepStack()) {
+    console.log('[global-teardown-no-ch] E2E_KEEP_STACK=1: leaving the Docker Compose test stack up.');
+    return;
+  }
   console.log('[global-teardown-no-ch] Stopping Docker Compose test stack (no ClickHouse)...');
   try {
     execFileSync('docker', [...COMPOSE_ARGS, 'down', '-v', '--remove-orphans'], {

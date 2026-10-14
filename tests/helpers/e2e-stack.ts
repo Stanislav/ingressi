@@ -50,3 +50,17 @@ export function composeEnv(stack: E2eStack = e2eStack()): NodeJS.ProcessEnv {
   const profiles = stack === 'replicas' ? 'clickhouse,third-replica' : 'clickhouse';
   return { ...process.env, CLICKHOUSE_PASSWORD: 'test-clickhouse-password-2026', COMPOSE_PROFILES: profiles };
 }
+
+/**
+ * `--build` for `docker compose up`, unless E2E_SKIP_BUILD=1: CI builds the
+ * images once and loads them under the tags the compose files name
+ * (.github/workflows/e2e.yml), so the stack must not build them again.
+ */
+export function composeBuildFlags(): string[] {
+  return process.env.E2E_SKIP_BUILD === '1' ? [] : ['--build'];
+}
+
+/** True with E2E_KEEP_STACK=1: the teardown leaves the containers up, so CI can read their logs after a failure. */
+export function keepStack(): boolean {
+  return process.env.E2E_KEEP_STACK === '1';
+}

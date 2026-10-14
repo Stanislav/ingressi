@@ -17,6 +17,7 @@ import {
   soleLeader,
   waitForHealthy,
 } from './helpers/replicas';
+import { composeBuildFlags } from './helpers/e2e-stack';
 
 const AUTH_DIR = resolve(__dirname, '.auth');
 const AUTH_FILE = resolve(AUTH_DIR, 'admin.json');
@@ -47,7 +48,7 @@ async function seedAuthState(): Promise<void> {
 export default async function globalSetup() {
   const startedAt = new Date();
   log('Building and starting PostgreSQL, Caddy and replica A...');
-  replicaCompose(['up', '-d', '--build', '--wait', '--wait-timeout', '240', ...BASE_SERVICES, REPLICA_A.service], { timeoutMs: 1_200_000 });
+  replicaCompose(['up', '-d', ...composeBuildFlags(), '--wait', '--wait-timeout', '240', ...BASE_SERVICES, REPLICA_A.service], { timeoutMs: 1_200_000 });
   await waitForHealthy(REPLICA_A);
 
   log('Starting replica B...');
