@@ -83,7 +83,7 @@ Exclusions made before this release were plain rule id lists (`excluded_rule_ids
 
 Open a WAF event on **Security events** to see why it was blocked: every rule that matched, the points each added, the matched variable and data, the total score against the threshold, and the rule that decided. Rules above the blocking paranoia level show as logged only. The threshold comes from the audit record when it has it, otherwise from the current settings.
 
-For each rule that added points, the event suggests the narrowest exclusion: the rule, on the host that served the request, for the request's path, on the matched variable when the record names one. **This was a false positive** opens the exclusion form with it filled in. Only add one when the request was legitimate.
+For each rule that added points, the event suggests the narrowest exclusion: the rule, on the host that served the request, for the request's path, on the matched variable when the record names one. **This was a false positive** opens the exclusion form with it filled in; the host, path (picked from the directories above the request's path, or typed) and variable can all be changed before adding. A path with an ID in it matches only that one ID, so the form offers the directory above it. Only add one when the request was legitimate.
 
 ## Credentials in events
 

@@ -8,10 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HostPicker } from "@/src/components/hosts/HostPicker";
-import { cn } from "@/lib/utils";
 import { normalizeVariable, pathError, ruleIdError } from "@/src/lib/waf-exclusions";
 import { createWafExclusionAction, updateWafExclusionAction } from "./actions";
-import { Segmented } from "./Segmented";
+import { WafExclusionPathField } from "./WafExclusionPathField";
 
 /** The form of the dialog, as strings; `scope` is "global" or a proxy host id. */
 export type WafExclusionDraft = { ruleId: string; scope: string; path: string; pathMatch: "exact" | "prefix"; variable: string; reason: string };
@@ -86,6 +85,9 @@ export function WafExclusionDialog({
   );
   const pickedRule = rules.find((rule) => String(rule.ruleId) === draft.ruleId.trim());
   const showRuleList = !editing && ruleFocused && ruleMatches.length > 0 && !(pickedRule && ruleMatches.length === 1);
+
+  // A problem with the path is shown at the path; the others at the foot of the form.
+  const pathMessage = formError?.startsWith("The path") ? formError : null;
 
   function validate(): { ok: true; ruleId: number } | { ok: false; error: string } {
     const ruleId = editing ? editing.ruleId : /^\d{1,10}$/.test(draft.ruleId.trim()) ? Number(draft.ruleId.trim()) : NaN;
@@ -206,41 +208,14 @@ export function WafExclusionDialog({
               <HostPicker id="waf-ex-scope" hosts={hosts} value={draft.scope} onChange={(value) => setField("scope", value)} extras={[GLOBAL_CHOICE]} />
             )}
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="waf-ex-path">
-              Path <span className="font-normal text-muted-foreground">(optional)</span>
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                id="waf-ex-path"
-                className="min-w-0 flex-1 font-mono"
-                placeholder={pickedRule?.topPath ?? "/api/public/"}
-                value={draft.path}
-                onChange={(event) => setField("path", event.target.value)}
-              />
-              <Segmented
-                label="Path match"
-                value={draft.pathMatch}
-                onChange={(value) => setField("pathMatch", value as WafExclusionDraft["pathMatch"])}
-                disabled={!draft.path.trim()}
-                options={[
-                  { value: "prefix", label: "Starts with" },
-                  { value: "exact", label: "Exactly" },
-                ]}
-              />
-            </div>
-            <span className={cn("text-xs text-muted-foreground")}>
-              Without the query string. Empty: every path.
-              {pickedRule?.topPath && !draft.path.trim() && (
-                <>
-                  {" "}
-                  <button type="button" className="text-brand underline-offset-4 hover:underline" onClick={() => setField("path", pickedRule.topPath!)}>
-                    Use {pickedRule.topPath}
-                  </button>
-                </>
-              )}
-            </span>
-          </div>
+          <WafExclusionPathField
+            id="waf-ex-path"
+            path={draft.path}
+            pathMatch={draft.pathMatch}
+            onChange={(path, pathMatch) => setDraft((previous) => ({ ...previous, path, pathMatch }))}
+            requestPath={initial.path.trim() || pickedRule?.topPath || null}
+            error={pathMessage}
+          />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="waf-ex-variable">
               Variable <span className="font-normal text-muted-foreground">(optional)</span>
@@ -268,7 +243,7 @@ export function WafExclusionDialog({
               onChange={(event) => setField("reason", event.target.value.replace(/\n/g, " "))}
             />
           </div>
-          {formError && (
+          {formError && !pathMessage && (
             <p role="alert" className="text-sm text-destructive">
               {formError}
             </p>
