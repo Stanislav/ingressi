@@ -42,10 +42,11 @@ test.describe('Analytics world map', () => {
 
     // The worker is an ES module that imports ./maplibre-gl-shared.mjs relative
     // to itself — staging only the entry file leaves that import 404ing. The
-    // import is requested once the worker has loaded, a moment after it.
-    await expect
-      .poll(() => mapRequests.map((r) => r.url), { timeout: 15_000 })
-      .toContain('/maplibre/maplibre-gl-shared.mjs');
+    // browser does not report the requests a worker makes to the page, so ask
+    // for the file itself; the hover test below shows the worker running on it.
+    const shared = await page.request.get('/maplibre/maplibre-gl-shared.mjs');
+    expect(shared.status()).toBe(200);
+    expect(shared.headers()['content-type']).toMatch(/javascript/);
 
     const failed = mapRequests.filter((r) => r.status >= 400);
     expect(failed, `maplibre assets failed to load: ${JSON.stringify(failed)}`).toEqual([]);
