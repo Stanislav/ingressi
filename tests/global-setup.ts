@@ -92,17 +92,34 @@ async function seedAuthState(): Promise<void> {
   }
 }
 
+/**
+ * `docker compose up --wait`, once more when it fails: the OpenLDAP image
+ * sometimes exits at its first start (its bootstrap runs while slapd is still
+ * coming up) and starts at the second.
+ */
+function composeUp(): void {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync('docker', [
+        ...COMPOSE_ARGS,
+        'up', '-d', ...composeBuildFlags(),
+        '--wait', '--wait-timeout', '120',
+      ], {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+        env: ENV,
+      });
+      return;
+    } catch (err) {
+      if (attempt >= 2) throw err;
+      console.warn('[global-setup] docker compose up failed; trying once more:', err instanceof Error ? err.message : err);
+    }
+  }
+}
+
 export default async function globalSetup() {
   console.log(`[global-setup] Starting Docker Compose test stack (${e2eStack()})...`);
-  execFileSync('docker', [
-    ...COMPOSE_ARGS,
-    'up', '-d', ...composeBuildFlags(),
-    '--wait', '--wait-timeout', '120',
-  ], {
-    stdio: 'inherit',
-    cwd: process.cwd(),
-    env: ENV,
-  });
+  composeUp();
 
   console.log('[global-setup] Containers up. Waiting for /api/health...');
   await waitForHealth();
