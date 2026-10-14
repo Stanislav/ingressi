@@ -96,6 +96,7 @@ describe('interface preferences', () => {
       timeZone: 'Europe/Rome',
       numberFormat: 'de-DE',
       proxyHostsSort: 'host:asc',
+      proxyHostsGroup: 'tag',
       l4ProxyHostsSort: 'name:desc',
       clientCertificatesSort: 'expires:asc',
     })).toEqual({
@@ -103,12 +104,13 @@ describe('interface preferences', () => {
       timeZone: 'Europe/Rome',
       numberFormat: 'de-DE',
       proxyHostsSort: 'host:asc',
+      proxyHostsGroup: 'tag',
       l4ProxyHostsSort: 'name:desc',
       clientCertificatesSort: 'expires:asc',
     });
     expect(parsePreferencesInput({})).toEqual({});
     for (const body of [null, [], 'dark', { theme: 'blue' }, { timeZone: 'Mars/Olympus' }, { timeZone: '../etc' },
-      { numberFormat: 'xx-XX' }, { proxyHostsSort: 'host:sideways' }, { l4ProxyHostsSort: 'magic:asc' },
+      { numberFormat: 'xx-XX' }, { proxyHostsSort: 'host:sideways' }, { proxyHostsGroup: 'owner' }, { proxyHostsGroup: 'tags' }, { l4ProxyHostsSort: 'magic:asc' },
       { clientCertificatesSort: 'expires:first' }, { language: 'it' }]) {
       expect(() => parsePreferencesInput(body)).toThrow(ApiValidationError);
     }

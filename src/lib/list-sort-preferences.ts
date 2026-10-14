@@ -1,6 +1,7 @@
 /**
  * Sort preferences shared by the three dashboard lists whose columns are
  * user-sortable. Stored preferences use "default" or "<key>:<direction>".
+ * The Proxy Hosts list also has a stored grouping ("none" or "tag").
  */
 export const SORT_DIRECTIONS = ["asc", "desc"] as const;
 export type SortDirection = (typeof SORT_DIRECTIONS)[number];
@@ -10,6 +11,10 @@ export type StoredSortPreference<K extends string> = "default" | `${K}:${SortDir
 export const PROXY_HOST_SORT_KEYS = ["requests", "host", "name", "status", "errors", "created"] as const;
 export type ProxyHostSortKey = (typeof PROXY_HOST_SORT_KEYS)[number];
 export type ProxyHostsSortPreference = StoredSortPreference<ProxyHostSortKey>;
+
+/** How the Proxy Hosts list is laid out: one run of hosts, or a section per tag. */
+export const PROXY_HOST_GROUP_PREFERENCES = ["none", "tag"] as const;
+export type ProxyHostsGroupPreference = (typeof PROXY_HOST_GROUP_PREFERENCES)[number];
 
 export const L4_PROXY_HOST_SORT_KEYS = ["name", "protocol", "listenAddress", "upstreams", "enabled", "createdAt"] as const;
 export type L4ProxyHostSortKey = (typeof L4_PROXY_HOST_SORT_KEYS)[number];
@@ -36,6 +41,10 @@ function isStoredSortPreference<K extends string>(
 
 export function isProxyHostsSortPreference(value: unknown): value is ProxyHostsSortPreference {
   return isStoredSortPreference(value, PROXY_HOST_SORT_PREFERENCES);
+}
+
+export function isProxyHostsGroupPreference(value: unknown): value is ProxyHostsGroupPreference {
+  return typeof value === "string" && (PROXY_HOST_GROUP_PREFERENCES as readonly string[]).includes(value);
 }
 
 export function isL4ProxyHostsSortPreference(value: unknown): value is L4ProxyHostsSortPreference {

@@ -17,6 +17,7 @@ import {
   type ClientCertificateSortKey,
   type L4ProxyHostSortKey,
   type ProxyHostSortKey,
+  type ProxyHostsGroupPreference,
   type SortDirection,
   type StoredSortPreference,
 } from "@/src/lib/list-sort-preferences";
@@ -65,6 +66,11 @@ const CLIENT_CERTIFICATE_SORTS: readonly SortChoice<ClientCertificateSortKey>[] 
   { key: "ca", label: "Issued by", defaultDir: "asc" },
   { key: "issued", label: "Issued", defaultDir: "desc" },
   { key: "expires", label: "Expires", defaultDir: "asc" },
+];
+
+const PROXY_HOST_GROUPS: Array<[ProxyHostsGroupPreference, string]> = [
+  ["none", "None"],
+  ["tag", "By tag"],
 ];
 
 function SortPreferenceControl<K extends string>({
@@ -280,6 +286,17 @@ export default function InterfaceSection() {
             onPick={(clientCertificatesSort) => save({ clientCertificatesSort })}
             disabled={pending}
           />
+        </div>
+        <div className="flex flex-col gap-2">
+          <span id="ui-proxy-host-group" className="text-sm font-medium">Proxy hosts grouping</span>
+          <Segmented<ProxyHostsGroupPreference>
+            labelledBy="ui-proxy-host-group"
+            options={PROXY_HOST_GROUPS}
+            value={preferences.proxyHostsGroup}
+            onPick={(proxyHostsGroup) => save({ proxyHostsGroup })}
+            disabled={pending}
+          />
+          <span className="text-xs text-muted-foreground">By tag lays the list out in a section per tag.</span>
         </div>
       </div>
     </section>

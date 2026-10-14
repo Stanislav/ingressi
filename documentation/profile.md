@@ -48,6 +48,7 @@ Creating and revoking a token are recorded in the audit log (`api_token_created`
 - **Time zone:** any IANA time zone; UTC by default.
 - **Number format:** `1,234.5`, `1.234,5` or `1 234,5`.
 - **Default list order:** the initial sort column and direction for Proxy Hosts, L4 Proxy Hosts and Client Certificates. **Application default** keeps each list's built-in behavior. Where a list stores sorting in its URL, explicit sort parameters take precedence.
+- **Proxy hosts grouping:** **None** opens the Proxy Hosts list as one run of hosts, **By tag** as a section per tag. The list's **Group by tag** button changes it for the visit only; the setting is where to make it the default.
 
 All interface preferences follow your account to every browser. Exports, the audit log export and the REST API stay in UTC with plain numbers. Changes are recorded as `preferences_updated`.
 
@@ -72,7 +73,7 @@ An account is **invited** while it is active, has never signed in to the dashboa
 | `GET /api/v1/tokens` | Any user | Your tokens with their `scopes` (administrators: every user's) |
 | `POST /api/v1/tokens` | Any user, session only | `{"name", "scopes"?, "expiresIn"?: "30d" \| "90d" \| "365d" \| "never", "expires_at"?}` |
 | `DELETE /api/v1/tokens/{id}` | Any user | Revoke one of your tokens (administrators: anyone's) |
-| `GET /api/v1/preferences` | Any user | Your theme, time zone, number format and default list ordering |
+| `GET /api/v1/preferences` | Any user | Your theme, time zone, number format, default list ordering and Proxy Hosts grouping |
 | `PUT /api/v1/preferences` | Any user | Change any interface preference |
 
 ```bash

@@ -25,9 +25,11 @@ import { first } from "@/src/lib/db/ops";
 import {
   CLIENT_CERTIFICATE_SORT_PREFERENCES,
   L4_PROXY_HOST_SORT_PREFERENCES,
+  PROXY_HOST_GROUP_PREFERENCES,
   PROXY_HOST_SORT_PREFERENCES,
   isClientCertificatesSortPreference,
   isL4ProxyHostsSortPreference,
+  isProxyHostsGroupPreference,
   isProxyHostsSortPreference,
 } from "./list-sort-preferences";
 
@@ -43,6 +45,7 @@ export async function getUserPreferences(userId: number): Promise<UserPreference
     timeZone: isValidTimeZone(row.timeZone) ? row.timeZone : DEFAULT_PREFERENCES.timeZone,
     numberFormat: isNumberFormat(row.numberFormat) ? row.numberFormat : DEFAULT_PREFERENCES.numberFormat,
     proxyHostsSort: isProxyHostsSortPreference(row.proxyHostsSort) ? row.proxyHostsSort : DEFAULT_PREFERENCES.proxyHostsSort,
+    proxyHostsGroup: isProxyHostsGroupPreference(row.proxyHostsGroup) ? row.proxyHostsGroup : DEFAULT_PREFERENCES.proxyHostsGroup,
     l4ProxyHostsSort: isL4ProxyHostsSortPreference(row.l4ProxyHostsSort) ? row.l4ProxyHostsSort : DEFAULT_PREFERENCES.l4ProxyHostsSort,
     clientCertificatesSort: isClientCertificatesSortPreference(row.clientCertificatesSort)
       ? row.clientCertificatesSort
@@ -56,7 +59,7 @@ export function parsePreferencesInput(body: unknown): Partial<UserPreferences> {
     throw new ApiValidationError("Request body must be a JSON object");
   }
   const record = body as Record<string, unknown>;
-  const allowed = new Set(["theme", "timeZone", "numberFormat", "proxyHostsSort", "l4ProxyHostsSort", "clientCertificatesSort"]);
+  const allowed = new Set(["theme", "timeZone", "numberFormat", "proxyHostsSort", "proxyHostsGroup", "l4ProxyHostsSort", "clientCertificatesSort"]);
   for (const key of Object.keys(record)) {
     if (!allowed.has(key)) throw new ApiValidationError(`Unknown field "${key.slice(0, 40)}"`);
   }
@@ -80,6 +83,12 @@ export function parsePreferencesInput(body: unknown): Partial<UserPreferences> {
       throw new ApiValidationError(`proxyHostsSort must be one of ${PROXY_HOST_SORT_PREFERENCES.join(", ")}`);
     }
     input.proxyHostsSort = record.proxyHostsSort;
+  }
+  if (record.proxyHostsGroup !== undefined) {
+    if (!isProxyHostsGroupPreference(record.proxyHostsGroup)) {
+      throw new ApiValidationError(`proxyHostsGroup must be one of ${PROXY_HOST_GROUP_PREFERENCES.join(", ")}`);
+    }
+    input.proxyHostsGroup = record.proxyHostsGroup;
   }
   if (record.l4ProxyHostsSort !== undefined) {
     if (!isL4ProxyHostsSortPreference(record.l4ProxyHostsSort)) {

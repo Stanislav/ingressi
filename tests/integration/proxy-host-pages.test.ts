@@ -73,6 +73,8 @@ type ListProps = {
   availableTags: string[];
   editTarget: { id: number } | null;
   pagination: { total: number };
+  query: { groupBy: string };
+  defaultGroupBy: string;
 };
 
 async function listPage(params: Record<string, string | string[]> = {}): Promise<ListProps> {
@@ -153,6 +155,20 @@ describe('proxy hosts list', () => {
     expect((await listPage()).rows.map((row) => row.name)).toEqual(['Charlie', 'Bravo', 'Alpha']);
     expect((await listPage({ sortBy: 'host', sortDir: 'asc' })).rows.map((row) => row.name))
       .toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
+
+  it('groups by tag when the account prefers it, unless the URL says otherwise', async () => {
+    // Without a saved preference the list is one run of hosts, and ?group=tag groups it.
+    expect((await listPage()).query.groupBy).toBe('none');
+    expect((await listPage({ group: 'tag' })).query.groupBy).toBe('tag');
+
+    await ctx.db.insert(schema.userPreferences).values({ userId: ADMIN, proxyHostsGroup: 'tag', updatedAt: nowIso() });
+    const preferred = await listPage();
+    expect(preferred.query.groupBy).toBe('tag');
+    expect(preferred.defaultGroupBy).toBe('tag');
+    // ?group=none opens the ungrouped list, whatever the account prefers.
+    expect((await listPage({ group: 'none' })).query.groupBy).toBe('none');
+    expect((await listPage({ group: 'tag' })).query.groupBy).toBe('tag');
   });
 
   it('limits a scoped role to its hosts and hides what it may not read', async () => {

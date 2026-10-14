@@ -214,6 +214,7 @@ describe('interface preferences', () => {
         timeZone: 'UTC',
         numberFormat: 'en-US',
         proxyHostsSort: 'default',
+        proxyHostsGroup: 'none',
         l4ProxyHostsSort: 'default',
         clientCertificatesSort: 'default',
       });
@@ -221,18 +222,21 @@ describe('interface preferences', () => {
     expect((await preferencesRoute.PUT(request('PUT', 'alice', '/api/v1/preferences', { timeZone: 'Mars/Base' }))).status).toBe(400);
     expect((await preferencesRoute.PUT(request('PUT', 'alice', '/api/v1/preferences', { colour: 'red' }))).status).toBe(400);
     expect((await preferencesRoute.PUT(request('PUT', 'alice', '/api/v1/preferences', { proxyHostsSort: 'host:sideways' }))).status).toBe(400);
+    expect((await preferencesRoute.PUT(request('PUT', 'alice', '/api/v1/preferences', { proxyHostsGroup: 'owner' }))).status).toBe(400);
     expect((await preferencesRoute.PUT(request('PUT', 'alice', '/api/v1/preferences'))).status).toBe(400);
 
     const saved = await (await preferencesRoute.PUT(request('PUT', 'alice', '/api/v1/preferences', {
       timeZone: 'Europe/Rome',
       numberFormat: 'de-DE',
       proxyHostsSort: 'host:asc',
+      proxyHostsGroup: 'tag',
     }))).json();
     expect(saved).toEqual({
       theme: 'system',
       timeZone: 'Europe/Rome',
       numberFormat: 'de-DE',
       proxyHostsSort: 'host:asc',
+      proxyHostsGroup: 'tag',
       l4ProxyHostsSort: 'default',
       clientCertificatesSort: 'default',
     });
@@ -251,6 +255,7 @@ describe('interface preferences', () => {
       timeZone: 'Europe/Rome',
       numberFormat: 'de-DE',
       proxyHostsSort: 'host:sideways',
+      proxyHostsGroup: 'owner',
       l4ProxyHostsSort: 'magic:asc',
       clientCertificatesSort: 'expires:first',
       updatedAt: now(),
@@ -262,6 +267,7 @@ describe('interface preferences', () => {
         timeZone: 'Europe/Rome',
         numberFormat: 'de-DE',
         proxyHostsSort: 'default',
+        proxyHostsGroup: 'none',
         l4ProxyHostsSort: 'default',
         clientCertificatesSort: 'default',
       });

@@ -20,6 +20,7 @@ import {
   PROTECTION_FILTER_LABELS,
   hostGroupOf,
   primaryDomain,
+  type GroupBy,
   type HostListQuery,
   type HostListRow,
   type SortKey,
@@ -76,6 +77,8 @@ type Props = {
   analyticsStatus: AnalyticsStatus | null;
   availableTags: string[];
   query: HostListQuery;
+  /** The grouping the account opens the list with (Profile → Interface); an address without ?group= uses it. "none" when omitted. */
+  defaultGroupBy?: GroupBy;
   certificates: CertificatePickerOption[];
   accessLists: AccessList[];
   caCertificates: CaCertificate[];
@@ -145,8 +148,95 @@ function SortHeader({
   );
 }
 
+type GroupSection = { group: string | null; ids: number[] };
+
 function GroupHeading({ group }: { group: string | null }) {
   return group === null ? <span>No tag</span> : <span className="num">{group}</span>;
+}
+
+/** The checkbox of a section: ticked when all its hosts on the page are selected, mixed when some are. */
+function GroupCheckbox({
+  section,
+  selected,
+  onToggle,
+  id,
+}: {
+  section: GroupSection;
+  selected: ReadonlySet<number>;
+  onToggle: (ids: readonly number[], checked: boolean) => void;
+  id: string;
+}) {
+  const count = section.ids.filter((rowId) => selected.has(rowId)).length;
+  return (
+    <Checkbox
+      id={id}
+      aria-label={section.group === null ? "Select the hosts without a tag" : `Select the hosts tagged ${section.group}`}
+      checked={count === section.ids.length ? true : count > 0 ? "indeterminate" : false}
+      onCheckedChange={(checked) => onToggle(section.ids, checked === true)}
+    />
+  );
+}
+
+/** A section's own row in the table: its tag, and a checkbox that selects its hosts. */
+function GroupRow({
+  section,
+  selected,
+  canWrite,
+  columnCount,
+  onToggle,
+}: {
+  section: GroupSection;
+  selected: ReadonlySet<number>;
+  canWrite: boolean;
+  columnCount: number;
+  onToggle: (ids: readonly number[], checked: boolean) => void;
+}) {
+  const id = `host-group-${section.ids[0]}`;
+  return (
+    <tr className="border-b border-line bg-panel2">
+      {canWrite && (
+        <td className="w-5 py-2 pl-[18px] pr-2">
+          <GroupCheckbox section={section} selected={selected} onToggle={onToggle} id={id} />
+        </td>
+      )}
+      <th scope="colgroup" colSpan={canWrite ? columnCount - 1 : columnCount} className={cn("py-2 pr-[18px] text-left text-[13px] font-medium", canWrite ? "px-2.5" : "pl-[18px]")}>
+        {canWrite ? (
+          <label htmlFor={id} className="cursor-pointer">
+            <GroupHeading group={section.group} />
+          </label>
+        ) : (
+          <GroupHeading group={section.group} />
+        )}
+      </th>
+    </tr>
+  );
+}
+
+/** The same on a narrow screen, where the hosts are a list. */
+function GroupItem({
+  section,
+  selected,
+  canWrite,
+  onToggle,
+}: {
+  section: GroupSection;
+  selected: ReadonlySet<number>;
+  canWrite: boolean;
+  onToggle: (ids: readonly number[], checked: boolean) => void;
+}) {
+  const id = `host-group-item-${section.ids[0]}`;
+  return (
+    <li className="flex items-center gap-3 border-b border-line bg-panel2 px-4 py-2 text-[13px] font-medium">
+      {canWrite && <GroupCheckbox section={section} selected={selected} onToggle={onToggle} id={id} />}
+      {canWrite ? (
+        <label htmlFor={id} className="cursor-pointer">
+          <GroupHeading group={section.group} />
+        </label>
+      ) : (
+        <GroupHeading group={section.group} />
+      )}
+    </li>
+  );
 }
 
 function PlainHeader({ children, className }: { children: ReactNode; className?: string }) {
@@ -234,6 +324,7 @@ export default function ProxyHostsClient({
   canWrite = true,
   scopeTags = [],
   approval = null,
+  defaultGroupBy = "none",
 }: Props) {
   const [createOpen, setCreateOpen] = useState(false);
   const [duplicateHost, setDuplicateHost] = useState<ProxyHost | null>(null);
@@ -356,24 +447,30 @@ export default function ProxyHostsClient({
   }
 
   function toggleGrouping() {
+    const next: GroupBy = query.groupBy === "tag" ? "none" : "tag";
     pushParams((params) => {
-      if (query.groupBy === "tag") params.delete("group");
-      else params.set("group", "tag");
+      // What the account opens the list with needs no parameter; anything else is named, so "none" can override a default of "tag".
+      if (next === defaultGroupBy) params.delete("group");
+      else params.set("group", next);
     });
   }
 
-  /** The heading to show above a row: the first of the page, and wherever the section changes. */
-  const groupHeadings = useMemo(() => {
-    if (query.groupBy !== "tag") return new Map<number, string | null>();
-    const headings = new Map<number, string | null>();
-    let previous: string | null | undefined;
+  /** The sections of this page, by the id of the host each starts with: the first of the page, and wherever the tag changes. */
+  const groupSections = useMemo(() => {
+    const sections = new Map<number, { group: string | null; ids: number[] }>();
+    // Without tags anywhere there is nothing to group by: no "No tag" heading over every host.
+    if (query.groupBy !== "tag" || availableTags.length === 0) return sections;
+    let current: { group: string | null; ids: number[] } | null = null;
     for (const row of rows) {
       const group = hostGroupOf(row, query.tags);
-      if (group !== previous) headings.set(row.id, group);
-      previous = group;
+      if (current === null || current.group !== group) {
+        current = { group, ids: [] };
+        sections.set(row.id, current);
+      }
+      current.ids.push(row.id);
     }
-    return headings;
-  }, [rows, query.groupBy, query.tags]);
+    return sections;
+  }, [rows, query.groupBy, query.tags, availableTags.length]);
 
   function clearFilters() {
     setSearchTerm("");
@@ -407,6 +504,18 @@ export default function ProxyHostsClient({
       const next = new Set(current);
       if (checked) next.add(id);
       else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Selects or clears the hosts of one section of the page. */
+  function toggleSection(ids: readonly number[], checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
   }
@@ -708,12 +817,8 @@ export default function ProxyHostsClient({
                         const isSelected = selected.has(row.id);
                         return (
                           <Fragment key={row.id}>
-                          {groupHeadings.has(row.id) && (
-                            <tr className="bg-panel2">
-                              <th scope="colgroup" colSpan={columnCount} className="border-b border-line px-[18px] py-1.5 text-left text-xs font-medium text-muted-foreground">
-                                <GroupHeading group={groupHeadings.get(row.id) ?? null} />
-                              </th>
-                            </tr>
+                          {groupSections.has(row.id) && (
+                            <GroupRow section={groupSections.get(row.id)!} selected={selected} canWrite={canWrite} columnCount={columnCount} onToggle={toggleSection} />
                           )}
                           <tr
                             className={cn(
@@ -770,10 +875,8 @@ export default function ProxyHostsClient({
                 <ul className="flex flex-col md:hidden" aria-label="Proxy hosts">
                   {rows.map((row) => (
                     <Fragment key={row.id}>
-                    {groupHeadings.has(row.id) && (
-                      <li role="presentation" className="border-b border-line bg-panel2 px-4 py-1.5 text-xs font-medium text-muted-foreground">
-                        <GroupHeading group={groupHeadings.get(row.id) ?? null} />
-                      </li>
+                    {groupSections.has(row.id) && (
+                      <GroupItem section={groupSections.get(row.id)!} selected={selected} canWrite={canWrite} onToggle={toggleSection} />
                     )}
                     <li
                       className={cn(

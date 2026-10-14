@@ -7,12 +7,14 @@
 import type {
   ClientCertificatesSortPreference,
   L4ProxyHostsSortPreference,
+  ProxyHostsGroupPreference,
   ProxyHostsSortPreference,
 } from "./list-sort-preferences";
 
 export type {
   ClientCertificatesSortPreference,
   L4ProxyHostsSortPreference,
+  ProxyHostsGroupPreference,
   ProxyHostsSortPreference,
 } from "./list-sort-preferences";
 
@@ -32,6 +34,7 @@ export type UserPreferences = {
   timeZone: string;
   numberFormat: NumberFormatPreference;
   proxyHostsSort: ProxyHostsSortPreference;
+  proxyHostsGroup: ProxyHostsGroupPreference;
   l4ProxyHostsSort: L4ProxyHostsSortPreference;
   clientCertificatesSort: ClientCertificatesSortPreference;
 };
@@ -41,6 +44,7 @@ export const DEFAULT_PREFERENCES: Readonly<UserPreferences> = Object.freeze({
   timeZone: "UTC",
   numberFormat: "en-US",
   proxyHostsSort: "default",
+  proxyHostsGroup: "none",
   l4ProxyHostsSort: "default",
   clientCertificatesSort: "default",
 });

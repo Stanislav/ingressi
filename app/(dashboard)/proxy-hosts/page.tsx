@@ -46,7 +46,8 @@ export default async function ProxyHostsPage({ searchParams }: PageProps) {
   const query = parseHostListQuery(
     params,
     can(access, "analytics:read"),
-    parseStoredSortPreference(preferences.proxyHostsSort)
+    parseStoredSortPreference(preferences.proxyHostsSort),
+    preferences.proxyHostsGroup
   );
 
   const [allHosts, certificates, caCertificates, accessLists, authentikDefaults, forwardAuthDefaults] = await Promise.all([
@@ -131,6 +132,7 @@ export default async function ProxyHostsPage({ searchParams }: PageProps) {
       analyticsStatus={analyticsStatus}
       availableTags={availableTags}
       query={{ ...query, page }}
+      defaultGroupBy={preferences.proxyHostsGroup}
       certificates={certificates.filter((cert) => picker.certificate(cert.id)).map(toCertificatePickerOption)}
       caCertificates={picker.trustAnchors ? caCertificates : []}
       accessLists={visibleAccessLists}

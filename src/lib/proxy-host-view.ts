@@ -8,8 +8,10 @@
 import type { CertificateKind, RenewalState } from "./certificate-renewal";
 import type { WafEffectiveMode } from "./waf-host-mode";
 import {
+  PROXY_HOST_GROUP_PREFERENCES,
   PROXY_HOST_SORT_KEYS,
   type ProxyHostSortKey,
+  type ProxyHostsGroupPreference,
   type SortDirection,
 } from "./list-sort-preferences";
 
@@ -355,8 +357,8 @@ export const SORT_LABELS: Record<SortKey, string> = {
 };
 
 /** How the list is laid out: one run of hosts, or a section per tag. */
-export const GROUP_BYS = ["none", "tag"] as const;
-export type GroupBy = (typeof GROUP_BYS)[number];
+export const GROUP_BYS = PROXY_HOST_GROUP_PREFERENCES;
+export type GroupBy = ProxyHostsGroupPreference;
 
 export type HostListQuery = {
   search: string;
@@ -377,12 +379,15 @@ function first(value: string | string[] | undefined): string | undefined {
 
 /**
  * The list's query from the page's search parameters. Sorting by requests
- * needs analytics; without it the list sorts by host name.
+ * needs analytics; without it the list sorts by host name. The sort and the
+ * grouping the account prefers apply unless the address names its own
+ * (`?group=tag` groups, `?group=none` does not).
  */
 export function parseHostListQuery(
   params: RawParams,
   analytics: boolean,
-  preferredSort: { key: SortKey; dir: SortDir } | null = null
+  preferredSort: { key: SortKey; dir: SortDir } | null = null,
+  preferredGroup: GroupBy = "none"
 ): HostListQuery {
   const search = (first(params.search) ?? "").trim().slice(0, 200);
   const statusParam = first(params.status);
@@ -411,7 +416,8 @@ export function parseHostListQuery(
         ? preferredSort.dir
         : DEFAULT_SORT_DIR[sortBy];
   const page = Math.max(1, Math.min(100_000, parseInt(first(params.page) ?? "1", 10) || 1));
-  const groupBy: GroupBy = first(params.group) === "tag" ? "tag" : "none";
+  const groupParam = first(params.group);
+  const groupBy: GroupBy = groupParam === "tag" || groupParam === "none" ? groupParam : preferredGroup;
   return { search, status, protection, tags, sortBy, sortDir, groupBy, page };
 }
 

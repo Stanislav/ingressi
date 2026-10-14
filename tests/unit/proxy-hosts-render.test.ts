@@ -133,6 +133,26 @@ describe('proxy hosts list', () => {
     expect(grouped).toContain('scope="colgroup"');
   });
 
+  it('gives each section its own row with a checkbox that selects its hosts', () => {
+    const grouped = renderList({ query: { ...query, groupBy: 'tag' } });
+    // One row per section on the page: media, mail and the hosts without a tag.
+    expect(grouped.match(/scope="colgroup"/g)).toHaveLength(3);
+    for (const label of ['Select the hosts tagged media', 'Select the hosts tagged mail', 'Select the hosts without a tag']) {
+      expect(grouped).toContain(`aria-label="${label}"`);
+    }
+    // The heading names the checkbox it belongs to, so clicking the tag ticks it.
+    expect(grouped).toMatch(/<label for="host-group-1"[^>]*>.*?media/);
+    // Without write access there is nothing to select: the rows only name the sections.
+    const readOnly = renderList({ query: { ...query, groupBy: 'tag' }, canWrite: false });
+    expect(readOnly.match(/scope="colgroup"/g)).toHaveLength(3);
+    expect(readOnly).not.toContain('Select the hosts');
+  });
+
+  it('shows no section rows when no host has a tag to group by', () => {
+    const html = renderList({ query: { ...query, groupBy: 'tag' }, availableTags: [], rows: rows.map((row) => ({ ...row, tags: [] })) });
+    expect(html).not.toContain('colgroup');
+  });
+
   it('pages a long list with the shared pager, linking each page by ?page=', () => {
     const html = renderList({ totalHosts: 62, statusCounts: { all: 62, attention: 1, disabled: 1 }, pagination: { total: 62, page: 2, perPage: 25 } });
     expect(html).toContain('aria-label="Pages of hosts"');

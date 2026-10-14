@@ -232,6 +232,16 @@ describe('filters and sort', () => {
     expect(parseHostListQuery({ group: 'nope' }, false).groupBy).toBe('none');
   });
 
+  it("opens grouped by tag when the account prefers it; the address can say otherwise", () => {
+    expect(parseHostListQuery({}, false, null, 'tag').groupBy).toBe('tag');
+    expect(parseHostListQuery({}, false, null, 'none').groupBy).toBe('none');
+    expect(parseHostListQuery({ group: 'none' }, false, null, 'tag').groupBy).toBe('none');
+    expect(parseHostListQuery({ group: 'tag' }, false, null, 'none').groupBy).toBe('tag');
+    // Anything else in the address is not an answer: the preference stands.
+    expect(parseHostListQuery({ group: 'nope' }, false, null, 'tag').groupBy).toBe('tag');
+    expect(parseHostListQuery({ group: ['none', 'tag'] }, false, null, 'tag').groupBy).toBe('none');
+  });
+
   it('sorts by the host name apart from its domain', () => {
     const rows = [
       row(1, { name: '📺 Sonarr', domains: ['z.example.com'] }),

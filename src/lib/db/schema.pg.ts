@@ -2021,6 +2021,8 @@ export const userPreferences = pgTable("user_preferences", {
   numberFormat: text("numberFormat").notNull().default("en-US"),
   /** "default" or "<sort key>:<asc|desc>" for the Proxy Hosts list. */
   proxyHostsSort: text("proxyHostsSort").notNull().default("default"),
+  /** "none" or "tag": how the Proxy Hosts list is laid out when it opens. */
+  proxyHostsGroup: text("proxyHostsGroup").notNull().default("none"),
   /** "default" or "<sort key>:<asc|desc>" for the L4 Proxy Hosts list. */
   l4ProxyHostsSort: text("l4ProxyHostsSort").notNull().default("default"),
   /** "default" or "<sort key>:<asc|desc>" for the Client Certificates list. */

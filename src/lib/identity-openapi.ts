@@ -7,6 +7,7 @@ import { NUMBER_FORMATS, THEMES } from "./preferences-shared";
 import {
   CLIENT_CERTIFICATE_SORT_PREFERENCES,
   L4_PROXY_HOST_SORT_PREFERENCES,
+  PROXY_HOST_GROUP_PREFERENCES,
   PROXY_HOST_SORT_PREFERENCES,
 } from "./list-sort-preferences";
 
@@ -22,7 +23,7 @@ export const PASSKEYS_OPENAPI_TAG = {
 
 export const PREFERENCES_OPENAPI_TAG = {
   name: "Preferences",
-  description: "Your interface preferences: theme, time zone, number format and default ordering of sortable lists. They follow your account to every browser.",
+  description: "Your interface preferences: theme, time zone, number format and default ordering and grouping of lists. They follow your account to every browser.",
 };
 
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
@@ -207,10 +208,11 @@ export const IDENTITY_OPENAPI_SCHEMAS = {
       timeZone: { type: "string", example: "Europe/Rome", description: "An IANA time zone; UTC by default" },
       numberFormat: { type: "string", enum: [...NUMBER_FORMATS], description: "1,234.5 (en-US), 1.234,5 (de-DE) or 1 234,5 (fr-FR)" },
       proxyHostsSort: { type: "string", enum: [...PROXY_HOST_SORT_PREFERENCES], description: "Default ordering of Proxy Hosts; default keeps the application default" },
+      proxyHostsGroup: { type: "string", enum: [...PROXY_HOST_GROUP_PREFERENCES], description: "How the Proxy Hosts list is laid out when it opens: none (one run of hosts) or tag (a section per tag)" },
       l4ProxyHostsSort: { type: "string", enum: [...L4_PROXY_HOST_SORT_PREFERENCES], description: "Default ordering of L4 Proxy Hosts; default keeps the application default" },
       clientCertificatesSort: { type: "string", enum: [...CLIENT_CERTIFICATE_SORT_PREFERENCES], description: "Default ordering of Client Certificates; default keeps the application default" },
     },
-    required: ["theme", "timeZone", "numberFormat", "proxyHostsSort", "l4ProxyHostsSort", "clientCertificatesSort"],
+    required: ["theme", "timeZone", "numberFormat", "proxyHostsSort", "proxyHostsGroup", "l4ProxyHostsSort", "clientCertificatesSort"],
   },
   PreferencesInput: {
     type: "object",
@@ -220,6 +222,7 @@ export const IDENTITY_OPENAPI_SCHEMAS = {
       timeZone: { type: "string" },
       numberFormat: { type: "string", enum: [...NUMBER_FORMATS] },
       proxyHostsSort: { type: "string", enum: [...PROXY_HOST_SORT_PREFERENCES] },
+      proxyHostsGroup: { type: "string", enum: [...PROXY_HOST_GROUP_PREFERENCES] },
       l4ProxyHostsSort: { type: "string", enum: [...L4_PROXY_HOST_SORT_PREFERENCES] },
       clientCertificatesSort: { type: "string", enum: [...CLIENT_CERTIFICATE_SORT_PREFERENCES] },
     },
