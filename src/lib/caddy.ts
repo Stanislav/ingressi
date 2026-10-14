@@ -54,6 +54,7 @@ import {
 import { buildDefaultResponseRoute } from "./caddy-default-response";
 import { isReservedL4Port } from "./l4-reserved-ports";
 import { buildDnsChallengeConfig, type DnsProviderCredentials } from "./dns-providers";
+import { parseStoredCertificateProviderOptions } from "./certificate-provider-options";
 import { syncInstances } from "./instance-sync";
 import { deferCaddyApplyToBatch } from "./change-batch";
 import { recordConfigSnapshotAfterApply } from "@/ee/config-history/snapshots";
@@ -2672,7 +2673,7 @@ export async function buildTlsAutomation(
 
     // Per-certificate provider override, falling back to global default
     let effectiveProvider = globalDnsProvider;
-    const certOptions = entry.certificate.providerOptions as { provider?: string } | null;
+    const certOptions = parseStoredCertificateProviderOptions(entry.certificate.providerOptions);
     if (certOptions?.provider && dnsProviderSettings?.providers[certOptions.provider]) {
       effectiveProvider = {
         provider: certOptions.provider,
