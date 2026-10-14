@@ -2,6 +2,15 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.5.0
+
+- **Exclusion dialogs let you change what an exclusion covers.** **Exclude N rules…** and the single-rule dialog on a security event edit the host (this host or every host), the path (starts with or exactly, with the request's path and the path above an ID as choices) and, per rule, the variable, and say in one sentence what will be excluded. An exclusion with neither a path nor a variable now warns first.
+- **The Proxy Hosts list sorts by Name and groups by tag.** The **Group by tag** button lays the list out in a section per tag, each with its own row and select-all checkbox. **Profile → Interface → Proxy hosts grouping** makes grouping the default for your account (`proxyHostsGroup` in `GET/PUT /api/v1/preferences`); `?group=tag` and `?group=none` override it for a visit.
+- **A certificate's own DNS provider is used.** The provider chosen for a single certificate was ignored and the global default used instead; a certificate with a DNS-01 override uses it from the first start of this version.
+- **Bunny is a DNS-01 provider** (Certificates → Certificate settings). The Caddy image carries its module.
+- **Analytics settings says why ClickHouse does not answer** (host name not found, connection refused). The GeoIP update container is named `ingressi-geoipupdate` instead of `geoipupdate-${HOSTNAME}`, so `docker compose` no longer warns that `HOSTNAME` is not set; with the `geoipupdate` profile, `docker compose up -d` recreates the container under the new name.
+- One database migration runs on start (a column on `user_preferences`).
+
 ## Upgrading to v2.4.1
 
 - **Alert channel and AI provider URLs may not point at a link-local address or at Caddy's admin API**: saving one is refused, and delivery to a channel stored earlier at such an address fails with "The endpoint is …, which is not allowed" instead of sending. Link-local (`169.254.0.0/16`, `fe80::/10`) is where cloud metadata services answer; private LAN addresses stay allowed.
