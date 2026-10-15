@@ -55,7 +55,7 @@ export function toEditorCertificate(certificate: Certificate): EditorCertificate
     domains: [...certificate.domainNames],
     expiresAt: pem?.validTo ?? null,
     issuer: pem?.issuer ?? null,
-    provider: typeof certificate.providerOptions?.provider === "string" ? certificate.providerOptions.provider : null,
+    provider: certificate.type === "managed" && typeof certificate.providerOptions?.provider === "string" ? certificate.providerOptions.provider : null,
   };
 }
 

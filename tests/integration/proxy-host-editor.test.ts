@@ -238,6 +238,23 @@ describe('host editor pages', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
-    expect(view).toEqual({ id: 3, name: 'Imported', type: 'imported', domains: ['example.com'], expiresAt: null, issuer: null });
+    expect(view).toEqual({ id: 3, name: 'Imported', type: 'imported', domains: ['example.com'], expiresAt: null, issuer: null, provider: null });
+  });
+
+  it('give a managed certificate\'s provider by name only', () => {
+    const view = toEditorCertificate({
+      id: 4,
+      name: 'Shop',
+      type: 'managed',
+      domainNames: ['shop.example.com'],
+      autoRenew: true,
+      providerOptions: { provider: 'godaddy', api_token: 'provider-secret-sentinel' },
+      certificatePem: null,
+      privateKeyPem: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(view).toEqual({ id: 4, name: 'Shop', type: 'managed', domains: ['shop.example.com'], expiresAt: null, issuer: null, provider: 'godaddy' });
+    expect(JSON.stringify(view)).not.toContain('provider-secret-sentinel');
   });
 });

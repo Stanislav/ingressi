@@ -169,6 +169,7 @@ Every guard of a route, page or server action and the permission it checks. Rout
 | `app/(dashboard)/backups/page.tsx` | `BackupsPage` | `backups:read` |
 | `app/(dashboard)/branding/page.tsx` | `BrandingPage` | `branding:read` |
 | `app/(dashboard)/certificates/actions.ts` | `createCertificateAction` | `certificates:write` |
+| `app/(dashboard)/certificates/actions.ts` | `saveManagedCertificateAction` | `certificates:write` |
 | `app/(dashboard)/certificates/actions.ts` | `updateCertificateAction` | `certificates:write` |
 | `app/(dashboard)/certificates/actions.ts` | `deleteCertificateAction` | `certificates:write` |
 | `app/(dashboard)/certificates/ca-actions.ts` | `createCaCertificateAction` | `certificates:write` |
