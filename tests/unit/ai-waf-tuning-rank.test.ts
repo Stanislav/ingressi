@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_SUGGESTION_SCORE, compareSuggestions, rankCandidate, ruleFamily, type CandidateStats } from '@/ee/ai/waf-tuning-rank';
+import {
+  MIN_SUGGESTION_SCORE,
+  SEVERE_ATTACK_MIN_SCORE,
+  compareSuggestions,
+  isProbePath,
+  pathSignals,
+  rankCandidate,
+  ruleFamily,
+  type CandidateStats,
+} from '@/ee/ai/waf-tuning-rank';
 
 function stats(overrides: Partial<CandidateStats> = {}): CandidateStats {
   return {
@@ -79,6 +88,159 @@ describe('rankCandidate', () => {
   it('needs many clean clients for high confidence', () => {
     expect(rankCandidate(stats({ cleanClients: 20 })).confidence).not.toBe('high');
     expect(rankCandidate(stats({ clients: 8, cleanClients: 8, normalClients: 8 })).confidence).not.toBe('high');
+  });
+});
+
+describe('isProbePath', () => {
+  it('knows the paths scanners ask for', () => {
+    for (const path of [
+      '/.env',
+      '/.env.local',
+      '/.git/config',
+      '/admin/.git/HEAD',
+      '/.aws/credentials',
+      '/.htaccess',
+      '/.DS_Store',
+      '/%2e%2e/%2e%2e/etc/passwd',
+      '/static/../../etc/shadow',
+      '/etc/passwd',
+      '/proc/self/environ',
+      '/windows/win.ini',
+      '/wp-config.php',
+      '/wp-config.php.bak',
+      '/backup.sql',
+      '/site.tar.gz.old',
+      '/database.sqlite3',
+      '/composer.json',
+      '/web.config',
+      '/id_rsa',
+      '/uploads/c99.php',
+      '/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php',
+      '/.env.backup',
+      '/.env~',
+      '/wp-config.php~',
+      '/index.php~',
+      '/.git/config~',
+      '/.claude/settings.local.json',
+      '/terraform.tfstate.backup',
+      '/terraform.tfvars',
+      '/firebase-config.js',
+    ]) {
+      expect(isProbePath(path), path).toBe(true);
+    }
+  });
+
+  it('leaves the pages of applications that really run alone', () => {
+    for (const path of [
+      '/',
+      '/search',
+      '/api/upload/chunk',
+      '/Items/3f6c2a0e-8a4b-4b8e-9e0f-1a2b3c4d5e6f/PlaybackInfo',
+      '/.well-known/acme-challenge/abc',
+      '/.well-known/openid-configuration',
+      '/wp-admin/admin-ajax.php',
+      '/wp-login.php',
+      '/phpmyadmin/index.php',
+      '/cgi-bin/status',
+      '/actuator/health',
+      '/downloads/report.zip',
+      '/assets/app.min.js',
+      '/blog/how-to-use-.env-files',
+      '/web/config.json',
+      '/api/v1/request',
+      '/Microsoft-Server-ActiveSync',
+      '/%E0%A4%A',
+    ]) {
+      expect(isProbePath(path), path).toBe(false);
+    }
+  });
+});
+
+describe('pathSignals', () => {
+  it('shares the matches between probe and other paths', () => {
+    const signals = pathSignals([
+      { path: '/.env', events: 60 },
+      { path: '/.git/config', events: 40 },
+      { path: '/index.php', events: 100 },
+    ]);
+    expect(signals.probeShare).toBe(0.5);
+    expect(signals.scattered).toBe(false);
+  });
+
+  it('finds a scanner in matches spread over many unrelated paths', () => {
+    const many = Array.from({ length: 60 }, (_, index) => ({ path: `/dir${index}/index.php`, events: 5 }));
+    expect(pathSignals(many)).toMatchObject({ distinctPaths: 60, scattered: true });
+  });
+
+  it('does not call one endpoint with a different ID per request scattered', () => {
+    const ids = Array.from({ length: 80 }, (_, index) => ({ path: `/Items/${String(index).padStart(8, '0')}0000/PlaybackInfo`, events: 5 }));
+    expect(pathSignals(ids)).toMatchObject({ distinctPaths: 1, scattered: false });
+    expect(pathSignals([])).toMatchObject({ probeShare: 0, scattered: false });
+  });
+});
+
+describe('rankCandidate and scanners', () => {
+  // A scanner looking for secrets: many clients over many days, each only triggering this rule.
+  const SCANNER = {
+    ruleId: 930130,
+    events: 3091,
+    clients: 92,
+    activeDays: 15,
+    blockedEvents: 3091,
+    criticalEvents: 3091,
+    averageAnomalyScore: 5,
+    cleanClients: 45,
+    normalClients: 23,
+    pathPrefixes: [
+      { prefix: '/.env', events: 68, clients: 52, examplePaths: ['/.env'] },
+      { prefix: '/.git/config', events: 63, clients: 51, examplePaths: ['/.git/config'] },
+    ],
+  };
+  const PROBES = [
+    { path: '/.env', events: 68 },
+    { path: '/.git/config', events: 63 },
+    { path: '/.env.local', events: 41 },
+    { path: '/backup.sql', events: 30 },
+    { path: '/wp-config.php.bak', events: 22 },
+  ];
+
+  it('does not suggest severe attack-class matches that only look widespread', () => {
+    const ranking = rankCandidate(stats(SCANNER));
+    expect(ranking.score).toBeLessThan(SEVERE_ATTACK_MIN_SCORE);
+    expect(ranking.score).toBeGreaterThanOrEqual(MIN_SUGGESTION_SCORE);
+    expect(ranking.suggest).toBe(false);
+  });
+
+  it('still suggests severe attack-class matches that visitors cause', () => {
+    // Blocked searches of normal clients that trigger nothing else.
+    const ranking = rankCandidate(stats({ ruleId: 942100, blockedEvents: 380, criticalEvents: 380, cleanClients: 58, normalClients: 56, averageAnomalyScore: 5 }));
+    expect(ranking.confidence).toBe('low');
+    expect(ranking.score).toBeGreaterThanOrEqual(SEVERE_ATTACK_MIN_SCORE);
+    expect(ranking.suggest).toBe(true);
+  });
+
+  it('does not suggest matches on probe paths, however normal the clients look', () => {
+    const quiet = stats({ ruleId: 930130, cleanClients: 58, normalClients: 56 });
+    expect(rankCandidate(quiet).suggest).toBe(true);
+    const ranking = rankCandidate({ ...quiet, paths: PROBES });
+    expect(ranking.suggest).toBe(false);
+    expect(ranking.confidence).toBe('low');
+    expect(ranking.reasons.join(' ')).toMatch(/100% of the matches ask for files a website does not serve/);
+  });
+
+  it('does not suggest an attack-critical rule matching all over a site, but does one matching an endpoint', () => {
+    const spread = Array.from({ length: 50 }, (_, index) => ({ path: `/section-${index}/page`, events: 8 }));
+    const ranking = rankCandidate({ ...stats({ ruleId: 932160, cleanClients: 58, normalClients: 56 }), paths: spread });
+    expect(ranking.suggest).toBe(false);
+    expect(ranking.reasons.join(' ')).toMatch(/spread over 50 different paths/);
+    // A rule outside the attack-critical families can match anywhere (a header, the method).
+    expect(rankCandidate({ ...stats({ ruleId: 920350 }), paths: spread }).suggest).toBe(true);
+    expect(rankCandidate({ ...stats({ ruleId: 932160 }), paths: [{ path: '/api/upload', events: 380 }, { path: '/', events: 20 }] }).suggest).toBe(true);
+  });
+
+  it('works without path data', () => {
+    expect(rankCandidate({ ...stats(), paths: undefined }).suggest).toBe(true);
+    expect(rankCandidate({ ...stats(), paths: [] }).suggest).toBe(true);
   });
 });
 

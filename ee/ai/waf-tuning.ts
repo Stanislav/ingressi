@@ -45,6 +45,7 @@ import {
   MIN_CLIENTS,
   MIN_EVENTS,
   NORMAL_CLIENT_MIN_OK_REQUESTS,
+  type PathCount,
   compareSuggestions,
   rankCandidate,
   ruleFamily,
@@ -63,6 +64,8 @@ import { asc } from "@/src/lib/db/ops";
 export const TUNING_WINDOW_DAYS = 14;
 const MAX_CANDIDATES = 50;
 const MAX_EVIDENCE_CANDIDATES = 30;
+/** Busiest request paths read per candidate to tell visitors from scanners. */
+const MAX_PATHS_PER_CANDIDATE = 100;
 const MAX_SUGGESTIONS = 25;
 export const MAX_EXPLANATIONS = 5;
 const MAX_EXPLANATION_CHARS = 1000;
@@ -252,6 +255,29 @@ async function queryPathPrefixes(q: AnalyticsQuery, tp: QueryParams, filter: { s
   return map;
 }
 
+/** The busiest request paths of each candidate's matches (query strings removed). */
+async function queryPaths(q: AnalyticsQuery, tp: QueryParams, filter: { sql: string; params: QueryParams }): Promise<Map<Key, PathCount[]>> {
+  const rows = await q<{ h: string; rule_id: string | number; request_path: string; path_events: string }>(
+    `SELECT h, rid AS rule_id, p AS request_path, count() AS path_events
+     FROM (
+       SELECT ${HOST_EXPR} AS h, assumeNotNull(rule_id) AS rid, ${PATH_EXPR} AS p
+       FROM waf_events WHERE ${timeFilter()} AND ${filter.sql}
+     )
+     GROUP BY h, rid, p
+     ORDER BY path_events DESC
+     LIMIT ${MAX_PATHS_PER_CANDIDATE} BY h, rid`,
+    { ...tp, ...filter.params }
+  );
+  const map = new Map<Key, PathCount[]>();
+  for (const row of rows) {
+    const k = key(row.h, num(row.rule_id));
+    const list = map.get(k) ?? [];
+    list.push({ path: str(row.request_path) || "/", events: num(row.path_events) });
+    map.set(k, list);
+  }
+  return map;
+}
+
 /** Each candidate's clients and their matches, as (h, rid, client_ip, hits). */
 const CANDIDATE_CLIENTS = (filter: string) =>
   `SELECT ${HOST_EXPR} AS h, assumeNotNull(rule_id) AS rid, client_ip, count() AS hits
@@ -413,6 +439,7 @@ export async function generateWafTuningSuggestions(
   let prefixes = new Map<Key, PathPrefixEvidence[]>();
   let clean = new Map<Key, number>();
   let normal: Map<Key, number> | null = null;
+  let paths: Map<Key, PathCount[]> | null = null;
   if (candidates.length > 0) {
     const filter = candidateFilter(candidates);
     try {
@@ -420,11 +447,11 @@ export async function generateWafTuningSuggestions(
     } catch {
       return failed();
     }
-    try {
-      normal = await queryNormalClients(deps.query, tp, filter);
-    } catch {
-      normal = null;
-    }
+    // Neither is needed to suggest: without them the traffic and path signals are left out.
+    [normal, paths] = await Promise.all([
+      queryNormalClients(deps.query, tp, filter).catch(() => null),
+      queryPaths(deps.query, tp, filter).catch(() => null),
+    ]);
   }
 
   const views: WafTuningSuggestionView[] = [];
@@ -448,7 +475,7 @@ export async function generateWafTuningSuggestions(
       lastSeen: new Date(num(row.last_seen) * 1000).toISOString(),
       pathPrefixes: prefixes.get(k) ?? [],
     };
-    const ranking = rankCandidate({ ruleId, ...evidence });
+    const ranking = rankCandidate({ ruleId, ...evidence, paths: paths?.get(k) });
     // Matches that look like real attacks are not proposed as false positives.
     if (!ranking.suggest) continue;
     views.push({

@@ -101,6 +101,8 @@ function clickhouseRows(sql: string): unknown[] {
       candidate('app.example.com', 913100), // suppressed globally
       candidate('unknown.example.com', 920420), // no proxy host
       candidate('app.example.com', 949110), // anomaly evaluation, never suggested
+      // Quiet and widespread by the numbers, but a scanner asking for secret files.
+      candidate('app.example.com', 930130, { events: '500', clients: '70', days: '12' }),
       // Looks like a real attack: blocked, severe, from clients that trigger other rules too.
       candidate('app.example.com', 930120, { events: '18', clients: '6', days: '3', blocked_events: '18', critical_events: '18', scored_events: '18', avg_score: 25 }),
     ];
@@ -113,10 +115,29 @@ function clickhouseRows(sql: string): unknown[] {
     ];
   }
   if (sql.includes('AS clean_clients')) {
-    return [{ h: 'app.example.com', rule_id: 920420, clean_clients: '55' }, { h: 'app.example.com', rule_id: 942100, clean_clients: '38' }];
+    return [
+      { h: 'app.example.com', rule_id: 920420, clean_clients: '55' },
+      { h: 'app.example.com', rule_id: 942100, clean_clients: '38' },
+      { h: 'app.example.com', rule_id: 930130, clean_clients: '66' },
+    ];
   }
   if (sql.includes('AS normal_clients')) {
-    return [{ h: 'app.example.com', rule_id: 920420, normal_clients: '50' }, { h: 'app.example.com', rule_id: 942100, normal_clients: '35' }];
+    return [
+      { h: 'app.example.com', rule_id: 920420, normal_clients: '50' },
+      { h: 'app.example.com', rule_id: 942100, normal_clients: '35' },
+      { h: 'app.example.com', rule_id: 930130, normal_clients: '60' },
+    ];
+  }
+  if (sql.includes('AS path_events')) {
+    return [
+      { h: 'app.example.com', rule_id: 920420, request_path: '/api/upload', path_events: '380' },
+      { h: 'app.example.com', rule_id: 920420, request_path: '/', path_events: '20' },
+      { h: 'app.example.com', rule_id: 942100, request_path: '/search', path_events: '300' },
+      { h: 'app.example.com', rule_id: 930130, request_path: '/.env', path_events: '180' },
+      { h: 'app.example.com', rule_id: 930130, request_path: '/.git/config', path_events: '120' },
+      { h: 'app.example.com', rule_id: 930130, request_path: '/backup.sql', path_events: '90' },
+      { h: 'app.example.com', rule_id: 930130, request_path: '/index.php', path_events: '110' },
+    ];
   }
   return [];
 }
@@ -208,6 +229,27 @@ describe('generating suggestions', () => {
 
     expect((await ctx.db.select().from(schema.wafTuningSuggestions)).map((row) => row.status)).toEqual(['open', 'open']);
     expect((await listOpenSuggestions()).map((view) => view.ruleId)).toEqual([920420, 942100]);
+  });
+
+  it('does not propose turning a rule off for scanners asking for secret files', async () => {
+    const { data } = await generate();
+    expect(data.suggestions.map((s: any) => s.ruleId)).not.toContain(930130);
+    // The paths are read for every candidate in one query, with the candidates bound as parameters.
+    const paths = ctx.calls.find((call) => call.query.includes('AS path_events'))!;
+    expect(paths.query).not.toContain('app.example.com');
+    expect(paths.query_params).toMatchObject({ c_h_0: 'app.example.com' });
+    expect(paths.query).toMatch(/LIMIT 100 BY h, rid/);
+  });
+
+  it('still suggests from the other signals when the paths cannot be read', async () => {
+    ctx.rows = (sql) => {
+      if (sql.includes('AS path_events')) throw new Error('query failed');
+      return clickhouseRows(sql);
+    };
+    const { status, data } = await generate();
+    expect(status).toBe(200);
+    expect(data.error).toBeNull();
+    expect(data.suggestions.map((s: any) => s.ruleId)).toEqual(expect.arrayContaining([920420, 942100, 930130]));
   });
 
   it('reports a ClickHouse failure and keeps the stored suggestions', async () => {
