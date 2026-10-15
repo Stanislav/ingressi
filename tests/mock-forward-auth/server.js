@@ -11,6 +11,11 @@
  *    and 401 for API-shaped requests.
  *  - /api/always-redirect     — generic provider whose single endpoint always
  *    302-redirects unauthenticated callers (valid sessions still get 200 + headers).
+ *  - /outpost.goauthentik.io/ — an Authentik outpost: the Caddy forward-auth
+ *    endpoint (/outpost.goauthentik.io/auth/caddy) answers 200 + X-Authentik-*
+ *    headers for a valid session cookie, else 302 to the outpost's start page
+ *    for browser-shaped requests and 401 for API-shaped ones; every other path
+ *    under the prefix answers "outpost-ok" (the outpost route Caddy proxies).
  *
  * Reachable inside the test docker network as "mock-forward-auth:9091".
  */
@@ -20,6 +25,8 @@ const http = require('node:http');
 const PORT = 9091;
 const PORTAL_URL = 'http://auth-portal.test:9091/';
 const VALID_COOKIE = 'authelia_session=valid-session';
+const AUTHENTIK_COOKIE = 'authentik_proxy=valid-session';
+const OUTPOST_PREFIX = '/outpost.goauthentik.io/';
 
 function identityHeaders() {
   return {
@@ -28,6 +35,16 @@ function identityHeaders() {
     'Remote-Email': 'alice@example.com',
     'Remote-Name': 'Alice Example',
     'Remote-IP': '10.0.0.1'
+  };
+}
+
+function authentikHeaders() {
+  return {
+    'X-Authentik-Username': 'alice',
+    'X-Authentik-Groups': 'admins|users',
+    'X-Authentik-Email': 'alice@example.com',
+    'X-Authentik-Name': 'Alice Example',
+    'X-Authentik-Uid': 'alice-uid'
   };
 }
 
@@ -64,8 +81,30 @@ function handleAuth(req, res, mode) {
   send(res, 401, { 'Content-Type': 'application/json' }, JSON.stringify({ status: '401', message: 'Unauthenticated' }));
 }
 
+function handleAuthentik(req, res) {
+  const cookie = req.headers['cookie'] || '';
+  if (cookie.includes(AUTHENTIK_COOKIE)) {
+    send(res, 200, authentikHeaders());
+    return;
+  }
+  if (isBrowserRequest(req)) {
+    const target = `${PORTAL_URL}outpost.goauthentik.io/start?rd=${encodeURIComponent(`http://${req.headers['x-forwarded-host'] || 'unknown'}${req.headers['x-forwarded-uri'] || '/'}`)}`;
+    send(res, 302, { Location: target }, 'Redirecting to the outpost');
+    return;
+  }
+  send(res, 401, { 'Content-Type': 'application/json' }, JSON.stringify({ status: '401', message: 'Unauthenticated' }));
+}
+
 const server = http.createServer((req, res) => {
   const path = (req.url || '/').split('?')[0];
+  if (path === `${OUTPOST_PREFIX}auth/caddy`) {
+    handleAuthentik(req, res);
+    return;
+  }
+  if (path.startsWith(OUTPOST_PREFIX)) {
+    send(res, 200, { 'Content-Type': 'text/plain' }, 'outpost-ok');
+    return;
+  }
   if (path === '/api/authz/forward-auth') {
     handleAuth(req, res, 'authelia');
     return;

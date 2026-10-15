@@ -79,6 +79,11 @@ async function validateAndSanitizeCertificateId(
   return { certificateId };
 }
 
+/** Addresses separated by commas, spaces or new lines. */
+function parseAddresses(raw: FormDataEntryValue | null): string[] {
+  return typeof raw === "string" ? raw.split(/[\s,]+/).filter(Boolean) : [];
+}
+
 function parseAuthentikConfig(formData: FormData): ProxyHostAuthentikInput | undefined {
   if (!formData.has("authentikPresent")) {
     return undefined;
@@ -97,6 +102,7 @@ function parseAuthentikConfig(formData: FormData): ProxyHostAuthentikInput | und
   const trustedProxies = parseCsv(formData.get("authentikTrustedProxies"));
   const protectedPaths = parseCsv(formData.get("authentikProtectedPaths"));
   const excludedPaths = parseCsv(formData.get("authentikExcludedPaths"));
+  const bypassSources = parseAddresses(formData.get("authentikBypassSources"));
   const setHostHeader = formData.has("authentikSetHostHeaderPresent")
     ? parseCheckbox(formData.get("authentikSetHostHeader"))
     : undefined;
@@ -126,6 +132,9 @@ function parseAuthentikConfig(formData: FormData): ProxyHostAuthentikInput | und
   if (excludedPaths.length > 0 || formData.has("authentikExcludedPaths")) {
     result.excludedPaths = excludedPaths;
   }
+  if (bypassSources.length > 0 || formData.has("authentikBypassSources")) {
+    result.bypassSources = bypassSources;
+  }
   if (setHostHeader !== undefined) {
     result.setOutpostHostHeader = setHostHeader;
   }
@@ -146,6 +155,7 @@ function parseIngressiForwardAuthConfig(formData: FormData): IngressiForwardAuth
     : undefined;
   const protectedPaths = parseCsv(formData.get("ingressiForwardAuthProtectedPaths"));
   const excludedPaths = parseCsv(formData.get("ingressiForwardAuthExcludedPaths"));
+  const bypassSources = parseAddresses(formData.get("ingressiForwardAuthBypassSources"));
 
   const result: IngressiForwardAuthInput = {};
   if (enabledValue !== undefined) {
@@ -156,6 +166,9 @@ function parseIngressiForwardAuthConfig(formData: FormData): IngressiForwardAuth
   }
   if (excludedPaths.length > 0 || formData.has("ingressiForwardAuthExcludedPaths")) {
     result.excluded_paths = excludedPaths.length > 0 ? excludedPaths : null;
+  }
+  if (bypassSources.length > 0 || formData.has("ingressiForwardAuthBypassSources")) {
+    result.bypass_sources = bypassSources.length > 0 ? bypassSources : null;
   }
 
   return Object.keys(result).length > 0 ? result : undefined;
@@ -185,6 +198,7 @@ function parseForwardAuthConfig(formData: FormData): ProxyHostForwardAuthInput |
   const apiBypassHeaders = parseCsv(formData.get("forwardAuthApiBypassHeaders"));
   const protectedPaths = parseCsv(formData.get("forwardAuthProtectedPaths"));
   const excludedPaths = parseCsv(formData.get("forwardAuthExcludedPaths"));
+  const bypassSources = parseAddresses(formData.get("forwardAuthBypassSources"));
 
   const result: ProxyHostForwardAuthInput = {};
   if (enabledValue !== undefined) {
@@ -216,6 +230,9 @@ function parseForwardAuthConfig(formData: FormData): ProxyHostForwardAuthInput |
   }
   if (excludedPaths.length > 0 || formData.has("forwardAuthExcludedPaths")) {
     result.excludedPaths = excludedPaths;
+  }
+  if (bypassSources.length > 0 || formData.has("forwardAuthBypassSources")) {
+    result.bypassSources = bypassSources;
   }
 
   return Object.keys(result).length > 0 ? result : undefined;

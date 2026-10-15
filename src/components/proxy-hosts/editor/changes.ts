@@ -5,7 +5,7 @@
  */
 import { diffLines, type DiffLine } from "@/components/ui/diff";
 import { RATE_LIMIT_KEY_LABELS } from "@/lib/rate-limit-rules";
-import { canonical, effectiveGrants, LB_POLICIES, serializeUpstreams, splitList, type HostForm, type LbForm } from "./model";
+import { addressList, canonical, effectiveGrants, LB_POLICIES, serializeUpstreams, splitList, type HostForm, type LbForm } from "./model";
 
 export const SECTIONS = ["routing", "security", "access", "certificate", "headers", "advanced"] as const;
 export type SectionId = (typeof SECTIONS)[number];
@@ -127,11 +127,16 @@ function geoLines(form: HostForm): string[] {
 function signInValue(form: HostForm): unknown {
   switch (form.signIn) {
     case "authentik":
-      return { signIn: form.signIn, authentik: form.authentik };
+      return { signIn: form.signIn, authentik: { ...form.authentik, bypassSources: addressList(form.authentik.bypassSources) } };
     case "generic":
-      return { signIn: form.signIn, forwardAuth: form.forwardAuth };
+      return { signIn: form.signIn, forwardAuth: { ...form.forwardAuth, bypassSources: addressList(form.forwardAuth.bypassSources) } };
     case "ingressi":
-      return { signIn: form.signIn, protectedPaths: splitList(form.ingressi.protectedPaths), excludedPaths: splitList(form.ingressi.excludedPaths) };
+      return {
+        signIn: form.signIn,
+        protectedPaths: splitList(form.ingressi.protectedPaths),
+        excludedPaths: splitList(form.ingressi.excludedPaths),
+        bypassSources: addressList(form.ingressi.bypassSources),
+      };
     default:
       return { signIn: "none" };
   }
@@ -140,6 +145,11 @@ function signInValue(form: HostForm): unknown {
 function pathsLine(label: string, value: string): string[] {
   const list = splitList(value);
   return list.length > 0 ? [`${label}: ${list.join(", ")}`] : [];
+}
+
+function sourcesLine(value: string): string[] {
+  const list = addressList(value);
+  return list.length > 0 ? [`Skip sign-in from: ${list.join(", ")}`] : [];
 }
 
 function signInLines(form: HostForm): string[] {
@@ -154,7 +164,8 @@ function signInLines(form: HostForm): string[] {
       `Trusted proxies: ${splitList(a.trustedProxies).join(", ") || "None"}`,
       `Sets the outpost's Host header: ${a.setHostHeader ? "yes" : "no"}`,
       ...pathsLine("Only these paths", a.protectedPaths),
-      ...pathsLine("Never these paths", a.excludedPaths)
+      ...pathsLine("Never these paths", a.excludedPaths),
+      ...sourcesLine(a.bypassSources)
     );
   } else if (form.signIn === "generic") {
     const f = form.forwardAuth;
@@ -167,10 +178,15 @@ function signInLines(form: HostForm): string[] {
       `401 for API clients: ${f.apiSplit ? "yes" : "no"}`,
       ...pathsLine("Skip sign-in with header", f.apiBypassHeaders),
       ...pathsLine("Only these paths", f.protectedPaths),
-      ...pathsLine("Never these paths", f.excludedPaths)
+      ...pathsLine("Never these paths", f.excludedPaths),
+      ...sourcesLine(f.bypassSources)
     );
   } else if (form.signIn === "ingressi") {
-    lines.push(...pathsLine("Only these paths", form.ingressi.protectedPaths), ...pathsLine("Never these paths", form.ingressi.excludedPaths));
+    lines.push(
+      ...pathsLine("Only these paths", form.ingressi.protectedPaths),
+      ...pathsLine("Never these paths", form.ingressi.excludedPaths),
+      ...sourcesLine(form.ingressi.bypassSources)
+    );
   }
   return lines;
 }
@@ -328,7 +344,12 @@ export function changeGroups(mode: "create" | "edit"): ChangeGroup[] {
         signIn: saved.signIn,
         authentik: saved.authentik,
         forwardAuth: saved.forwardAuth,
-        ingressi: { ...form.ingressi, protectedPaths: saved.ingressi.protectedPaths, excludedPaths: saved.ingressi.excludedPaths },
+        ingressi: {
+          ...form.ingressi,
+          protectedPaths: saved.ingressi.protectedPaths,
+          excludedPaths: saved.ingressi.excludedPaths,
+          bypassSources: saved.ingressi.bypassSources,
+        },
       }),
     },
     {

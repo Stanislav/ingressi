@@ -82,6 +82,13 @@ export type HostEditorData = {
   forwardAuthAccess: { userIds: number[]; groupIds: number[] };
   certificates: EditorCertificate[];
   servedCertificate: ServedCertificate | null;
+  /** How Caddy works out the client address, for the checks that match it (sign-in bypass). */
+  clientAddress: {
+    /** Trusted proxies are set, so the address comes from the headers behind them. */
+    proxiesTrusted: boolean;
+    /** The address comes from X-Forwarded-For read left to right, which a client can forge through a proxy that appends to it. */
+    forwardedForForgeable: boolean;
+  };
   accessLists: EditorAccessList[];
   /** The global Blocked sources list has rules: they apply to every host. */
   blockedSourcesActive: boolean;

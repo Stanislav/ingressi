@@ -116,8 +116,10 @@ import {
 import { readCaddyApplyState, recordCaddyApplyResult, type CaddyApplyFailureCode } from "./caddy-apply-status";
 import { TLS_ISSUANCE_LOGGERS } from "./tls-issuance-log";
 import { withCoalescedClusterLock } from "./db/locks";
+import { readBypassSources } from "./sign-in-bypass";
 import {
   accessListRouteName,
+  addressMatcherName,
   buildAccessListHandler,
   BLOCKED_SOURCES_LOG_VALUE,
   type AccessListCaddyContext,
@@ -222,6 +224,8 @@ type IngressiForwardAuthMeta = {
   enabled?: boolean;
   protected_paths?: string[];
   excluded_paths?: string[];
+  /** Client addresses that skip sign-in. Read through readBypassSources. */
+  bypass_sources?: string[];
 };
 
 type ForwardAuthMeta = {
@@ -235,6 +239,7 @@ type ForwardAuthMeta = {
   api_bypass_headers?: string[];
   protected_paths?: string[];
   excluded_paths?: string[];
+  bypass_sources?: string[];
 };
 
 const DEFAULT_AUTHELIA_FORWARD_AUTH_ENDPOINT = "/api/authz/forward-auth";
@@ -490,6 +495,7 @@ type ProxyHostAuthentikMeta = {
   set_outpost_host_header?: boolean;
   protected_paths?: string[];
   excluded_paths?: string[];
+  bypass_sources?: string[];
 };
 
 type AuthentikRouteConfig = {
@@ -502,6 +508,8 @@ type AuthentikRouteConfig = {
   setOutpostHostHeader: boolean;
   protectedPaths: string[] | null;
   excludedPaths: string[] | null;
+  /** Client addresses that skip sign-in (valid entries only). */
+  bypassSources: string[];
 };
 
 type ForwardAuthRouteConfig = {
@@ -519,6 +527,8 @@ type ForwardAuthRouteConfig = {
   apiBypassHeaders: string[];
   protectedPaths: string[] | null;
   excludedPaths: string[] | null;
+  /** Client addresses that skip sign-in (valid entries only). */
+  bypassSources: string[];
 };
 
 type LoadBalancerActiveHealthCheckMeta = {
@@ -1161,6 +1171,12 @@ type BuildProxyRoutesOptions = {
    * blocking.
    */
   accessListInvokes?: ReadonlyMap<number, Record<string, unknown>>;
+  /**
+   * The server's trusted proxy ranges, normalized (private_ranges expanded):
+   * with some, the sign-in bypass matches the client address behind them,
+   * without, the address of the connection (as access list rules do).
+   */
+  trustedProxies?: readonly string[];
 };
 
 export function buildLocationReverseProxy(
@@ -1235,6 +1251,47 @@ export function buildErrorPageRoute(rule: ErrorPageRule, hosts?: string[]): Cadd
     route.match = [matcher];
   }
   return route;
+}
+
+/**
+ * For every route of `routes` from `start` on whose handlers include one of
+ * `checks` (the sign-in check), puts a twin right before it for the clients
+ * `source` matches: the same host and path, without the sign-in check and
+ * with the route's other handlers. Several routes that differ only in what
+ * the twin ignores (browser or API client) share one twin. Routes that ask
+ * for no sign-in get none.
+ */
+function insertSourceBypassRoutes(
+  routes: CaddyHttpRoute[],
+  start: number,
+  checks: ReadonlySet<unknown>,
+  source: Record<string, unknown>
+): void {
+  const out: CaddyHttpRoute[] = [];
+  const twins = new Set<string>();
+  for (const route of routes.slice(start)) {
+    const handle = (route.handle as unknown[] | undefined) ?? [];
+    if (!handle.some((handler) => checks.has(handler))) {
+      out.push(route);
+      continue;
+    }
+    const twin: CaddyHttpRoute = {
+      match: ((route.match as Array<Record<string, unknown>> | undefined) ?? []).map(({ host, path }) => ({
+        ...(host !== undefined ? { host } : {}),
+        ...(path !== undefined ? { path } : {}),
+        ...source
+      })),
+      handle: JSON.parse(JSON.stringify(handle.filter((handler) => !checks.has(handler)))),
+      terminal: true
+    };
+    const key = JSON.stringify(twin);
+    if (!twins.has(key)) {
+      twins.add(key);
+      out.push(twin);
+    }
+    out.push(route);
+  }
+  routes.splice(start, routes.length - start, ...out);
 }
 
 async function buildProxyRoutes(
@@ -1630,6 +1687,24 @@ async function buildProxyRoutes(
       handlers.push(...customHandlers);
     }
 
+    // Clients whose address the host lets skip sign-in. For every route that
+    // asks for sign-in, a twin goes right before it (insertSourceBypassRoutes):
+    // same host and path, matched on the client address, with the same
+    // handlers (WAF, rate limits, access list, path rules, identity-header
+    // stripping) except the sign-in check. The server's routes are finally
+    // ordered by host and path with ties kept in this order, so the twin wins
+    // over the route it copies and over no other. The address is matched as
+    // access list rules match it. An empty list adds nothing.
+    const sourceMatcher = (sources: readonly string[]): Record<string, unknown> | null => {
+      const ranges = Array.from(new Set(expandPrivateRanges([...sources])));
+      if (ranges.length === 0) return null;
+      return { [addressMatcherName({ trustedProxies: options.trustedProxies ?? [] })]: { ranges } };
+    };
+    // The handlers that check for sign-in, and the match of the clients that skip it.
+    const signInChecks = new Set<unknown>();
+    let signInBypass: Record<string, unknown> | null = null;
+    const providerStart = hostRoutes.length;
+
     if (authentik) {
       // Build handle_response routes for copying headers on 2xx status
       const handleResponseRoutes = buildAuthResponseCopyRoutes(authentik.copyHeaders);
@@ -1687,6 +1762,9 @@ async function buildProxyRoutes(
       const akHandlers: Record<string, unknown>[] = authentikStripHandler
         ? [authentikStripHandler, ...handlers]
         : handlers;
+
+      signInChecks.add(forwardAuthHandler);
+      signInBypass = sourceMatcher(authentik.bypassSources);
 
       // Path-based authentication support
       if (authentik.protectedPaths && authentik.protectedPaths.length > 0) {
@@ -1870,6 +1948,9 @@ async function buildProxyRoutes(
 
       const browserFaHandler = buildGenericForwardAuthHandler(forwardAuth, false);
       const apiFaHandler = forwardAuth.apiSplit ? buildGenericForwardAuthHandler(forwardAuth, true) : null;
+      signInChecks.add(browserFaHandler);
+      if (apiFaHandler) signInChecks.add(apiFaHandler);
+      signInBypass = sourceMatcher(forwardAuth.bypassSources);
 
       const locationRules = meta.location_rules ?? [];
 
@@ -2130,6 +2211,9 @@ async function buildProxyRoutes(
         };
 
         const locationRules = meta.location_rules ?? [];
+
+        signInChecks.add(verifyHandler);
+        signInBypass = sourceMatcher(readBypassSources(ingressiForwardAuth.bypass_sources));
 
         if (ingressiForwardAuth.protected_paths && ingressiForwardAuth.protected_paths.length > 0) {
           // Whitelist mode: only specified paths get auth
@@ -2444,6 +2528,10 @@ async function buildProxyRoutes(
           hostRoutes.push(route);
         }
       }
+    }
+
+    if (signInBypass) {
+      insertSourceBypassRoutes(hostRoutes, providerStart, signInChecks, signInBypass);
     }
 
     routes.push(...hostRoutes);
@@ -3287,6 +3375,7 @@ async function buildCaddyDocumentFromDatabase() {
       globalRateLimit,
       wafExclusions: await listWafExclusionRows(),
       accessListInvokes: accessListConfig.invokes,
+      trustedProxies: normalizeTrustedProxyRanges(trustedProxiesSettings?.ranges),
     }
   );
 
@@ -3875,7 +3964,8 @@ function parseAuthentikConfig(meta: ProxyHostAuthentikMeta | undefined | null): 
     trustedProxies,
     setOutpostHostHeader,
     protectedPaths,
-    excludedPaths
+    excludedPaths,
+    bypassSources: readBypassSources(meta.bypass_sources)
   };
 }
 
@@ -3954,7 +4044,8 @@ function parseForwardAuthConfig(meta: ForwardAuthMeta | undefined | null): Forwa
     apiSplit: Boolean(meta.api_split),
     apiBypassHeaders,
     protectedPaths: sanitizePaths(meta.protected_paths),
-    excludedPaths: sanitizePaths(meta.excluded_paths)
+    excludedPaths: sanitizePaths(meta.excluded_paths),
+    bypassSources: readBypassSources(meta.bypass_sources)
   };
 }
 

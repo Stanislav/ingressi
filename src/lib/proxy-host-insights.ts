@@ -118,6 +118,10 @@ export function protectionInputFor(host: ProxyHost, globals: Globals, accessList
     sso: Boolean(host.ingressiForwardAuth?.enabled),
     authentik: Boolean(host.authentik?.enabled),
     forwardAuth: host.forwardAuth?.enabled ? host.forwardAuth.provider : null,
+    signInSkippedFor:
+      (host.ingressiForwardAuth?.enabled ? host.ingressiForwardAuth.bypass_sources?.length ?? 0 : 0) +
+      (host.authentik?.enabled ? host.authentik.bypassSources.length : 0) +
+      (host.forwardAuth?.enabled ? host.forwardAuth.bypassSources.length : 0),
     rateLimit: { rules: rules.length, first: rules[0] ? { events: rules[0].events, window: rules[0].window } : null },
     geo: effectiveGeo(globals.geo, host),
     accessList: host.accessListId !== null ? { name: accessListNames?.get(host.accessListId) ?? null } : null,

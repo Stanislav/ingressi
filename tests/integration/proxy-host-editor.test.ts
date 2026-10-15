@@ -43,6 +43,7 @@ import * as updatePreviewRoute from '../../app/api/v1/proxy-hosts/[id]/preview/r
 import * as approveRoute from '../../app/api/v1/change-requests/[id]/approve/route';
 import { first } from '@/src/lib/db/ops';
 import { setManagedCertificateProbeForTests } from '@/src/lib/managed-certificates';
+import { saveTrustedProxiesSettings } from '@/src/lib/settings';
 import { createSelfSignedServerCertificate } from '../helpers/certs';
 
 let tokens: Tokens;
@@ -145,6 +146,33 @@ describe('host editor save', () => {
     expect(await saveProxyHostEditorAction(hosts.dev, { host: { name: 'Nope' } })).toMatchObject({ status: 'error' });
     expect(await previewProxyHostEditorAction(hosts.dev, { host: { name: 'Nope' } })).toMatchObject({ status: 'error' });
     expect((await hostRow(ctx.db, hosts.dev))!.name).toBe('Dev');
+  });
+});
+
+describe('host editor save: addresses that skip sign-in', () => {
+  const providers = [
+    { name: 'Authentik', body: (sources: unknown) => ({ authentik: { enabled: true, outpostDomain: 'outpost.example.com', outpostUpstream: 'http://outpost:9000', bypassSources: sources } }), key: 'authentik', field: 'bypass_sources' },
+    { name: 'generic forward auth', body: (sources: unknown) => ({ forwardAuth: { enabled: true, provider: 'authelia', authUpstream: 'http://authelia:9091', bypassSources: sources } }), key: 'forward_auth', field: 'bypass_sources' },
+    { name: 'built-in sign-in', body: (sources: unknown) => ({ ingressiForwardAuth: { enabled: true, bypass_sources: sources } }), key: 'cpm_forward_auth', field: 'bypass_sources' },
+  ];
+
+  it.each(providers)('stores the list the editor sends for $name, normalized, and refuses a bad one', async ({ body, key, field }) => {
+    ctx.sessionUserId = ADMIN;
+    const created = await saveProxyHostEditorAction(null, {
+      host: { name: 'Skipper', domains: ['skip.example.com'], upstreams: ['http://10.0.0.5:8080'], sslForced: false, ...body(['192.168.1.77/24', 'private_ranges']) },
+    });
+    expect(created).toMatchObject({ status: 'saved' });
+    const hostId = created.status === 'saved' ? created.hostId : 0;
+    const stored = JSON.parse((await hostRow(ctx.db, hostId))!.meta as string);
+    expect(stored[key][field]).toEqual(['192.168.1.0/24', 'private_ranges']);
+
+    const refused = await saveProxyHostEditorAction(hostId, { host: body(['192.168.1.0/24', 'nope']) });
+    expect(refused).toMatchObject({ status: 'error', message: expect.stringContaining('"nope" is not an IP address, a CIDR range or private_ranges') });
+    expect(JSON.parse((await hostRow(ctx.db, hostId))!.meta as string)[key][field]).toEqual(['192.168.1.0/24', 'private_ranges']);
+
+    const cleared = await saveProxyHostEditorAction(hostId, { host: body([]) });
+    expect(cleared).toMatchObject({ status: 'saved' });
+    expect(JSON.parse((await hostRow(ctx.db, hostId))!.meta as string)[key][field]).toBeUndefined();
   });
 });
 
@@ -253,6 +281,28 @@ describe('host editor pages', () => {
     } finally {
       setManagedCertificateProbeForTests(null);
     }
+  });
+
+  it('tell the editor how Caddy works out the client address, for the sign-in bypass', async () => {
+    ctx.sessionUserId = ADMIN;
+    const clientAddress = async () => {
+      const page = (await ProxyHostPage({ params: Promise.resolve({ id: String(hosts.prod) }) })) as { props: { editor: Record<string, any> } };
+      return page.props.editor.clientAddress;
+    };
+    // Nothing trusted: the address of the connection.
+    expect(await clientAddress()).toEqual({ proxiesTrusted: false, forwardedForForgeable: false });
+    // Trusted proxies and the default header, read left to right: forgeable through a proxy that appends.
+    await saveTrustedProxiesSettings({ ranges: ['172.18.0.0/16'] });
+    expect(await clientAddress()).toEqual({ proxiesTrusted: true, forwardedForForgeable: true });
+    await saveTrustedProxiesSettings({ ranges: ['172.18.0.0/16'], client_ip_headers: ['X-Forwarded-For'] });
+    expect((await clientAddress()).forwardedForForgeable).toBe(true);
+    // Strict parsing, or a header the proxy sets itself, is not.
+    await saveTrustedProxiesSettings({ ranges: ['172.18.0.0/16'], strict: true });
+    expect(await clientAddress()).toEqual({ proxiesTrusted: true, forwardedForForgeable: false });
+    await saveTrustedProxiesSettings({ ranges: ['172.18.0.0/16'], client_ip_headers: ['Cf-Connecting-Ip'] });
+    expect(await clientAddress()).toEqual({ proxiesTrusted: true, forwardedForForgeable: false });
+    await saveTrustedProxiesSettings({ ranges: [' ', ''] });
+    expect(await clientAddress()).toEqual({ proxiesTrusted: false, forwardedForForgeable: false });
   });
 
   it('keep certificate keys and PEM out of the editor', () => {

@@ -143,6 +143,7 @@ describe('host editor payload', () => {
         setOutpostHostHeader: true,
         protectedPaths: null,
         excludedPaths: ['/public/*'],
+        bypassSources: [],
       },
     });
     const saved = hostToForm(stored);

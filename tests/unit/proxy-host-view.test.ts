@@ -90,6 +90,19 @@ describe('protectionsOf', () => {
     ]);
   });
 
+  it('says in the sign-in pill when addresses skip it, and keeps the label', () => {
+    const titles = (input: Partial<Parameters<typeof protectionsOf>[0]>) =>
+      protectionsOf({ ...NONE, ...input }).filter((pill) => pill.key === 'sign_in').map((pill) => [pill.label, pill.title]);
+    expect(titles({ sso: true, signInSkippedFor: 2 })).toEqual([['SSO', 'Visitors sign in with their dashboard account; 2 addresses skip it']]);
+    expect(titles({ authentik: true, signInSkippedFor: 1 })).toEqual([['Authentik', 'Visitors sign in through Authentik; 1 address skips it']]);
+    expect(titles({ forwardAuth: 'authelia', signInSkippedFor: 3 })).toEqual([['Forward auth · Authelia', 'Visitors sign in through Authelia; 3 addresses skip it']]);
+    expect(titles({ forwardAuth: 'custom', signInSkippedFor: 3 })).toEqual([['Forward auth', 'Requests are checked by a forward-auth server; 3 addresses skip it']]);
+    // Nothing is added without a list, or without a sign-in.
+    expect(titles({ sso: true, signInSkippedFor: 0 })).toEqual([['SSO', 'Visitors sign in with their dashboard account']]);
+    expect(titles({ sso: true })).toEqual([['SSO', 'Visitors sign in with their dashboard account']]);
+    expect(titles({ signInSkippedFor: 4 })).toEqual([]);
+  });
+
   it('summarises long lists and detection-only WAF', () => {
     const pills = protectionsOf({
       ...NONE,

@@ -78,6 +78,7 @@ function data(overrides: Partial<HostEditorData> = {}): HostEditorData {
     forwardAuthAccess: { userIds: [], groupIds: [] },
     certificates: [{ id: 2, name: 'Wildcard', type: 'imported', domains: ['*.example.com'], expiresAt: '2027-01-01T00:00:00.000Z', issuer: 'Example CA', provider: null }],
     servedCertificate: null,
+    clientAddress: { proxiesTrusted: false, forwardedForForgeable: false },
     accessLists: [{ id: 3, name: 'Office', description: null, rules: 2, members: 0, defaultAction: 'deny', otherHosts: 1 }],
     blockedSourcesActive: true,
     caCertificates: [],

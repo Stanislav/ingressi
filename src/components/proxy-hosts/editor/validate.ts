@@ -11,7 +11,8 @@ import {
   rateLimitWindowSeconds,
 } from "@/lib/rate-limit-rules";
 import type { SectionId } from "./changes";
-import { splitList, statusList, type HostForm, type LbForm } from "./model";
+import { addressList, splitList, statusList, type HostForm, type LbForm } from "./model";
+import { MAX_BYPASS_SOURCES, normalizeBypassSource } from "@/src/lib/sign-in-bypass";
 
 export type FieldError = { message: string; section: SectionId };
 export type FieldErrors = Record<string, FieldError>;
@@ -208,6 +209,22 @@ export function validateForm(form: HostForm, context: ValidationContext): FieldE
     });
   }
   // Access
+  const sourcesError = (value: string): string | null => {
+    const entries = addressList(value);
+    for (const entry of entries) {
+      const result = normalizeBypassSource(entry);
+      if ("error" in result) return result.error;
+    }
+    return entries.length > MAX_BYPASS_SOURCES ? `At most ${MAX_BYPASS_SOURCES} addresses.` : null;
+  };
+  const sourceMessages: Array<[string, string, string | null]> = [
+    ["authentik", "f-ak-sources", sourcesError(form.authentik.bypassSources)],
+    ["generic", "f-fa-sources", sourcesError(form.forwardAuth.bypassSources)],
+    ["ingressi", "f-fi-sources", sourcesError(form.ingressi.bypassSources)],
+  ];
+  for (const [signIn, id, message] of sourceMessages) {
+    if (form.signIn === signIn && message) errors[id] = { message, section: "access" };
+  }
   if (form.signIn === "authentik") {
     if (!form.authentik.outpostDomain.trim()) errors["f-ak-domain"] = { message: "Enter the outpost domain.", section: "access" };
     if (!form.authentik.outpostUpstream.trim()) errors["f-ak-upstream"] = { message: "Enter the outpost's address.", section: "access" };
@@ -281,6 +298,9 @@ export function fieldOfServerError(message: string, nameSection: SectionId): { i
     [/^waf\.request_body_limit/, "f-waf-body", "security"],
     [/directive|SecRule|SecAction|SecRuleRemove/i, "f-waf-directives", "security"],
     [/^waf\./, "f-waf-mode", "security"],
+    [/^authentik\.bypassSources/, "f-ak-sources", "access"],
+    [/^forwardAuth\.bypassSources/, "f-fa-sources", "access"],
+    [/^ingressiForwardAuth\.bypass_sources/, "f-fi-sources", "access"],
     [/^forwardAuth\.authUpstream/, "f-fa-upstream", "access"],
     [/^forwardAuth\.authEndpoint/, "f-fa-endpoint", "access"],
     [/forward-auth provider/i, "f-sign-in", "access"],

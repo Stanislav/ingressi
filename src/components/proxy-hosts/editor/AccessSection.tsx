@@ -10,7 +10,8 @@ import { useBranding } from "@/ee/white-label/ui/BrandingProvider";
 import { AddButton, EditorCard, FieldError, RemoveButton, TextField, ToggleRow, WasHint, useEditor, useFieldProps } from "./fields";
 import { NativeSelect, SegmentedField, SelectField } from "./controls";
 import { MtlsAccessRules } from "./MtlsAccessRules";
-import { AUTHELIA_ENDPOINT, AUTHELIA_HEADERS, PATH_BLOCK_STATUSES, rowKey, type GenericAuthForm, type SignIn } from "./model";
+import { AUTHELIA_ENDPOINT, AUTHELIA_HEADERS, PATH_BLOCK_STATUSES, addressList, rowKey, type GenericAuthForm, type SignIn } from "./model";
+import { touchesPrivateNetworks } from "@/src/lib/sign-in-bypass";
 import type { PathBlockStatusCode } from "@/lib/models/proxy-hosts";
 
 function AccessListCard() {
@@ -68,13 +69,29 @@ function AccessListCard() {
   );
 }
 
-function PathsFields({ prefix, protectedPaths, excludedPaths, onChange, names }: {
+/** What to tell about the address check, or null when nothing is worth saying. */
+function bypassWarning(entries: string[], address: { proxiesTrusted: boolean; forwardedForForgeable: boolean }): string | null {
+  if (address.forwardedForForgeable) {
+    return "A proxy that adds to X-Forwarded-For instead of replacing it lets a visitor forge the address: turn on strict parsing under Trusted proxies, or use the header the proxy sets itself.";
+  }
+  if (!address.proxiesTrusted && touchesPrivateNetworks(entries)) {
+    return "Matches the address that connects to Caddy. Behind a proxy, a CDN or Docker's port proxy that is theirs, not the visitor's, and everyone would skip sign-in: set Trusted proxies and test from outside.";
+  }
+  return null;
+}
+
+/** The paths a check covers or skips and, for the sign-in providers (not client certificates), the addresses that skip it. */
+function PathsFields({ prefix, protectedPaths, excludedPaths, bypassSources, onChange, names }: {
   prefix: string;
   protectedPaths: string;
   excludedPaths: string;
-  onChange: (patch: { protectedPaths?: string; excludedPaths?: string }) => void;
-  names?: { protectedPaths: string; excludedPaths: string };
+  bypassSources?: string;
+  onChange: (patch: { protectedPaths?: string; excludedPaths?: string; bypassSources?: string }) => void;
+  names?: { protectedPaths: string; excludedPaths: string; bypassSources?: string };
 }) {
+  const { data } = useEditor();
+  const entries = addressList(bypassSources ?? "");
+  const warning = entries.length === 0 ? null : bypassWarning(entries, data.clientAddress);
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-x-4 gap-y-3">
       <TextField
@@ -97,6 +114,19 @@ function PathsFields({ prefix, protectedPaths, excludedPaths, onChange, names }:
         hint="Ignored when only some paths are protected."
         mono
       />
+      {bypassSources !== undefined && (
+        <TextField
+          id={`${prefix}-sources`}
+          name={names?.bypassSources}
+          label="Skip sign-in from, optional"
+          value={bypassSources}
+          onChange={(value) => onChange({ bypassSources: value })}
+          placeholder="192.168.1.0/24, 10.0.0.5"
+          hint="Addresses and networks that reach the host without signing in."
+          mono
+        />
+      )}
+      {warning && <p className="col-span-full m-0 text-xs text-warn">{warning}</p>}
     </div>
   );
 }
@@ -171,7 +201,7 @@ function IngressiSignIn() {
         <p className="m-0 text-xs text-muted-foreground">People signed in to the dashboard through an identity provider get in without signing in again; everyone else signs in at the portal.</p>
         <FieldError id="f-sign-in-who" />
       </fieldset>
-      <PathsFields prefix="f-fi" protectedPaths={ingressi.protectedPaths} excludedPaths={ingressi.excludedPaths} onChange={set} />
+      <PathsFields prefix="f-fi" protectedPaths={ingressi.protectedPaths} excludedPaths={ingressi.excludedPaths} bypassSources={ingressi.bypassSources} onChange={set} />
     </div>
   );
 }
@@ -197,7 +227,7 @@ function AuthentikSignIn() {
         <TextField id="f-ak-headers" label="Headers copied to the upstream" value={a.copyHeaders} onChange={(copyHeaders) => set({ copyHeaders })} hint="Comma separated." mono />
         <TextField id="f-ak-proxies" label="Trusted proxies" value={a.trustedProxies} onChange={(trustedProxies) => set({ trustedProxies })} placeholder="private_ranges" mono />
       </div>
-      <PathsFields prefix="f-ak" protectedPaths={a.protectedPaths} excludedPaths={a.excludedPaths} onChange={set} />
+      <PathsFields prefix="f-ak" protectedPaths={a.protectedPaths} excludedPaths={a.excludedPaths} bypassSources={a.bypassSources} onChange={set} />
       <ToggleRow
         id="f-ak-host-header"
         className="py-0"
@@ -265,7 +295,7 @@ function GenericSignIn() {
           onChange={(apiSplit) => set({ apiSplit })}
         />
       </div>
-      <PathsFields prefix="f-fa" protectedPaths={f.protectedPaths} excludedPaths={f.excludedPaths} onChange={set} />
+      <PathsFields prefix="f-fa" protectedPaths={f.protectedPaths} excludedPaths={f.excludedPaths} bypassSources={f.bypassSources} onChange={set} />
     </div>
   );
 }

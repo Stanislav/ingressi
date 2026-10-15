@@ -16,6 +16,7 @@ import { isDeepStrictEqual } from "node:util";
 import { type GeoBlockSettings, type WafSettings, getDnsProviderSettings, getWafSettings } from "../settings";
 import { normalizeProxyHostDomains } from "../proxy-host-domains";
 import { ApiValidationError } from "../api-errors";
+import { normalizeBypassSources, readBypassSources } from "../sign-in-bypass";
 import { brandName } from "@/ee/white-label/store";
 import { bodyLimitRangeMessage, customDirectivesError, isValidBodyLimit, wafDirectiveSource } from "../caddy-waf";
 import { normalizeTags, parseStoredTags, serializeTags } from "../host-tags";
@@ -325,6 +326,8 @@ export type ProxyHostAuthentikConfig = {
   setOutpostHostHeader: boolean;
   protectedPaths: string[] | null;
   excludedPaths: string[] | null;
+  /** Client addresses that skip sign-in (IPs, CIDR ranges, private_ranges). */
+  bypassSources: string[];
 };
 
 export type ProxyHostAuthentikInput = {
@@ -337,6 +340,7 @@ export type ProxyHostAuthentikInput = {
   setOutpostHostHeader?: boolean | null;
   protectedPaths?: string[] | null;
   excludedPaths?: string[] | null;
+  bypassSources?: string[] | null;
 };
 
 type ProxyHostAuthentikMeta = {
@@ -349,6 +353,7 @@ type ProxyHostAuthentikMeta = {
   set_outpost_host_header?: boolean;
   protected_paths?: string[];
   excluded_paths?: string[];
+  bypass_sources?: string[];
 };
 
 export type MtlsConfig = {
@@ -492,12 +497,15 @@ export type IngressiForwardAuthConfig = {
   enabled: boolean;
   protected_paths: string[] | null;
   excluded_paths: string[] | null;
+  /** Client addresses that skip sign-in (IPs, CIDR ranges, private_ranges). */
+  bypass_sources?: string[] | null;
 };
 
 export type IngressiForwardAuthInput = {
   enabled?: boolean;
   protected_paths?: string[] | null;
   excluded_paths?: string[] | null;
+  bypass_sources?: string[] | null;
 };
 
 /** Preset profiles for the generic forward-auth provider. */
@@ -538,6 +546,8 @@ export type ProxyHostForwardAuthConfig = {
   apiBypassHeaders: string[];
   protectedPaths: string[] | null;
   excludedPaths: string[] | null;
+  /** Client addresses that skip sign-in (IPs, CIDR ranges, private_ranges). */
+  bypassSources: string[];
 };
 
 export type ProxyHostForwardAuthInput = {
@@ -551,6 +561,7 @@ export type ProxyHostForwardAuthInput = {
   apiBypassHeaders?: string[] | null;
   protectedPaths?: string[] | null;
   excludedPaths?: string[] | null;
+  bypassSources?: string[] | null;
 };
 
 type ForwardAuthMeta = {
@@ -564,6 +575,7 @@ type ForwardAuthMeta = {
   api_bypass_headers?: string[];
   protected_paths?: string[];
   excluded_paths?: string[];
+  bypass_sources?: string[];
 };
 
 /** Valid HTTP header name (RFC 7230 token) — copy/bypass headers end up in
@@ -574,6 +586,7 @@ type IngressiForwardAuthMeta = {
   enabled?: boolean;
   protected_paths?: string[];
   excluded_paths?: string[];
+  bypass_sources?: string[];
 };
 
 type ProxyHostMeta = {
@@ -748,6 +761,11 @@ function sanitizeAuthentikMeta(meta: ProxyHostAuthentikMeta | undefined): ProxyH
     }
   }
 
+  const sources = readBypassSources(meta.bypass_sources);
+  if (sources.length > 0) {
+    normalized.bypass_sources = sources;
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
@@ -811,6 +829,10 @@ function sanitizeForwardAuthMeta(meta: ForwardAuthMeta | undefined): ForwardAuth
     if (paths.length > 0) {
       normalized.excluded_paths = paths;
     }
+  }
+  const sources = readBypassSources(meta.bypass_sources);
+  if (sources.length > 0) {
+    normalized.bypass_sources = sources;
   }
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
@@ -996,6 +1018,10 @@ function sanitizeIngressiForwardAuthMeta(meta: IngressiForwardAuthMeta | undefin
     if (paths.length > 0) {
       normalized.excluded_paths = paths;
     }
+  }
+  const sources = readBypassSources(meta.bypass_sources);
+  if (sources.length > 0) {
+    normalized.bypass_sources = sources;
   }
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
@@ -1414,6 +1440,15 @@ function normalizeAuthentikInput(
     }
   }
 
+  if (input.bypassSources !== undefined) {
+    const sources = normalizeBypassSources(input.bypassSources, "authentik.bypassSources");
+    if (sources.length > 0) {
+      next.bypass_sources = sources;
+    } else {
+      delete next.bypass_sources;
+    }
+  }
+
   if ((next.enabled ?? false) && next.outpost_domain && !next.auth_endpoint) {
     next.auth_endpoint = `/${next.outpost_domain}/auth/caddy`;
   }
@@ -1520,6 +1555,15 @@ function normalizeForwardAuthInput(
       next.excluded_paths = paths;
     } else {
       delete next.excluded_paths;
+    }
+  }
+
+  if (input.bypassSources !== undefined) {
+    const sources = normalizeBypassSources(input.bypassSources, "forwardAuth.bypassSources");
+    if (sources.length > 0) {
+      next.bypass_sources = sources;
+    } else {
+      delete next.bypass_sources;
     }
   }
 
@@ -1986,6 +2030,14 @@ function buildMeta(
       if (input.ingressiForwardAuth.excluded_paths && input.ingressiForwardAuth.excluded_paths.length > 0) {
         cfa.excluded_paths = input.ingressiForwardAuth.excluded_paths;
       }
+      // Unlike the paths, the list is kept when the request does not mention it.
+      const bypassSources =
+        input.ingressiForwardAuth.bypass_sources === undefined
+          ? readBypassSources(existing.cpm_forward_auth?.bypass_sources)
+          : normalizeBypassSources(input.ingressiForwardAuth.bypass_sources, "ingressiForwardAuth.bypass_sources");
+      if (bypassSources.length > 0) {
+        cfa.bypass_sources = bypassSources;
+      }
       next.cpm_forward_auth = cfa;
     } else {
       delete next.cpm_forward_auth;
@@ -2079,6 +2131,12 @@ function buildMeta(
   return serializeMeta(next);
 }
 
+/** Only a host that has a list shows one, so hosts without keep the shape they always had. */
+function hydrateIngressiBypassSources(meta: IngressiForwardAuthMeta): { bypass_sources?: string[] } {
+  const sources = readBypassSources(meta.bypass_sources);
+  return sources.length > 0 ? { bypass_sources: sources } : {};
+}
+
 function hydrateAuthentik(meta: ProxyHostAuthentikMeta | undefined): ProxyHostAuthentikConfig | null {
   if (!meta) {
     return null;
@@ -2111,7 +2169,8 @@ function hydrateAuthentik(meta: ProxyHostAuthentikMeta | undefined): ProxyHostAu
     trustedProxies,
     setOutpostHostHeader,
     protectedPaths,
-    excludedPaths
+    excludedPaths,
+    bypassSources: readBypassSources(meta.bypass_sources)
   };
 }
 
@@ -2145,6 +2204,9 @@ function dehydrateAuthentik(config: ProxyHostAuthentikConfig | null): ProxyHostA
   }
   if (config.excludedPaths && config.excludedPaths.length > 0) {
     meta.excluded_paths = [...config.excludedPaths];
+  }
+  if (config.bypassSources.length > 0) {
+    meta.bypass_sources = [...config.bypassSources];
   }
 
   return meta;
@@ -2182,7 +2244,8 @@ function hydrateForwardAuth(meta: ForwardAuthMeta | undefined): ProxyHostForward
     protectedPaths:
       Array.isArray(meta.protected_paths) && meta.protected_paths.length > 0 ? meta.protected_paths : null,
     excludedPaths:
-      Array.isArray(meta.excluded_paths) && meta.excluded_paths.length > 0 ? meta.excluded_paths : null
+      Array.isArray(meta.excluded_paths) && meta.excluded_paths.length > 0 ? meta.excluded_paths : null,
+    bypassSources: readBypassSources(meta.bypass_sources)
   };
 }
 
@@ -2219,6 +2282,9 @@ function dehydrateForwardAuth(config: ProxyHostForwardAuthConfig | null): Forwar
   }
   if (config.excludedPaths && config.excludedPaths.length > 0) {
     meta.excluded_paths = [...config.excludedPaths];
+  }
+  if (config.bypassSources.length > 0) {
+    meta.bypass_sources = [...config.bypassSources];
   }
 
   return meta;
@@ -2484,7 +2550,12 @@ function parseProxyHost(row: ProxyHostRow): ProxyHost {
     waf: meta.waf ?? null,
     mtls: meta.mtls ?? null,
     ingressiForwardAuth: meta.cpm_forward_auth?.enabled
-      ? { enabled: true, protected_paths: meta.cpm_forward_auth.protected_paths ?? null, excluded_paths: meta.cpm_forward_auth.excluded_paths ?? null }
+      ? {
+          enabled: true,
+          protected_paths: meta.cpm_forward_auth.protected_paths ?? null,
+          excluded_paths: meta.cpm_forward_auth.excluded_paths ?? null,
+          ...hydrateIngressiBypassSources(meta.cpm_forward_auth)
+        }
       : null,
     forwardAuth: hydrateForwardAuth(meta.forward_auth),
     redirects: meta.redirects ?? [],
@@ -2717,7 +2788,8 @@ export async function updateProxyHost(id: number, rawInput: Partial<ProxyHostInp
       cpm_forward_auth: {
         enabled: true,
         ...(existing.ingressiForwardAuth.protected_paths ? { protected_paths: existing.ingressiForwardAuth.protected_paths } : {}),
-        ...(existing.ingressiForwardAuth.excluded_paths ? { excluded_paths: existing.ingressiForwardAuth.excluded_paths } : {})
+        ...(existing.ingressiForwardAuth.excluded_paths ? { excluded_paths: existing.ingressiForwardAuth.excluded_paths } : {}),
+        ...(existing.ingressiForwardAuth.bypass_sources && existing.ingressiForwardAuth.bypass_sources.length > 0 ? { bypass_sources: existing.ingressiForwardAuth.bypass_sources } : {})
       }
     } : {}),
     ...(existing.forwardAuth ? { forward_auth: dehydrateForwardAuth(existing.forwardAuth) } : {}),

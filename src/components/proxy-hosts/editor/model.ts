@@ -146,6 +146,8 @@ export type AuthentikForm = {
   trustedProxies: string;
   protectedPaths: string;
   excludedPaths: string;
+  /** Client addresses that skip sign-in. */
+  bypassSources: string;
   setHostHeader: boolean;
 };
 
@@ -159,9 +161,10 @@ export type GenericAuthForm = {
   apiBypassHeaders: string;
   protectedPaths: string;
   excludedPaths: string;
+  bypassSources: string;
 };
 
-export type IngressiAuthForm = { protectedPaths: string; excludedPaths: string; userIds: number[]; groupIds: number[] };
+export type IngressiAuthForm = { protectedPaths: string; excludedPaths: string; bypassSources: string; userIds: number[]; groupIds: number[] };
 
 export type MtlsForm = {
   enabled: boolean;
@@ -533,6 +536,7 @@ function authentikForm(host: ProxyHost | null, defaults: AuthentikSettings | nul
     trustedProxies: (own && own.trustedProxies.length > 0 ? own.trustedProxies : DEFAULT_TRUSTED_PROXIES).join(", "),
     protectedPaths: own?.protectedPaths?.join(", ") ?? "",
     excludedPaths: own?.excludedPaths?.join(", ") ?? "",
+    bypassSources: own?.bypassSources?.join(", ") ?? "",
     setHostHeader: own?.setOutpostHostHeader ?? true,
   };
 }
@@ -550,6 +554,7 @@ function genericForm(host: ProxyHost | null, defaults: ForwardAuthSettings | nul
     apiBypassHeaders: own?.apiBypassHeaders?.join(", ") ?? "",
     protectedPaths: own?.protectedPaths?.join(", ") ?? "",
     excludedPaths: own?.excludedPaths?.join(", ") ?? "",
+    bypassSources: own?.bypassSources?.join(", ") ?? "",
   };
 }
 
@@ -606,6 +611,7 @@ export function hostToForm(host: ProxyHost, context: FormContext = {}): HostForm
     ingressi: {
       protectedPaths: host.ingressiForwardAuth?.protected_paths?.join(", ") ?? "",
       excludedPaths: host.ingressiForwardAuth?.excluded_paths?.join(", ") ?? "",
+      bypassSources: host.ingressiForwardAuth?.bypass_sources?.join(", ") ?? "",
       userIds: [...grants.userIds].sort((a, b) => a - b),
       groupIds: [...grants.groupIds].sort((a, b) => a - b),
     },
@@ -672,7 +678,7 @@ export function newHostForm(
     signIn: "none",
     authentik: authentikForm(null, context.authentikDefaults),
     forwardAuth: genericForm(null, context.forwardAuthDefaults),
-    ingressi: { protectedPaths: "", excludedPaths: "", userIds: [], groupIds: [] },
+    ingressi: { protectedPaths: "", excludedPaths: "", bypassSources: "", userIds: [], groupIds: [] },
     mtls: { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", legacyCaIds: [] },
     pathBlocks: [],
     pathAllows: [],
@@ -720,6 +726,10 @@ const pathList = (value: string): string[] | null => {
   return list.length > 0 ? list : null;
 };
 
+/** Addresses may be separated by commas, spaces or new lines. */
+const ADDRESS_SEPARATORS = /[\s,]+/;
+export const addressList = (value: string): string[] => splitList(value, ADDRESS_SEPARATORS);
+
 function authentikInput(form: HostForm, base: ProxyHost | null) {
   const selected = form.signIn === "authentik";
   if (!selected && !base?.authentik) return undefined;
@@ -734,6 +744,7 @@ function authentikInput(form: HostForm, base: ProxyHost | null) {
     setOutpostHostHeader: a.setHostHeader,
     protectedPaths: pathList(a.protectedPaths),
     excludedPaths: pathList(a.excludedPaths),
+    bypassSources: addressList(a.bypassSources),
   };
 }
 
@@ -752,6 +763,7 @@ function genericInput(form: HostForm, base: ProxyHost | null) {
     apiBypassHeaders: splitList(f.apiBypassHeaders),
     protectedPaths: pathList(f.protectedPaths),
     excludedPaths: pathList(f.excludedPaths),
+    bypassSources: addressList(f.bypassSources),
   };
 }
 
@@ -759,7 +771,12 @@ function ingressiInput(form: HostForm, base: ProxyHost | null) {
   const selected = form.signIn === "ingressi";
   if (!selected && !base?.ingressiForwardAuth) return undefined;
   return selected
-    ? { enabled: true, protected_paths: pathList(form.ingressi.protectedPaths), excluded_paths: pathList(form.ingressi.excludedPaths) }
+    ? {
+        enabled: true,
+        protected_paths: pathList(form.ingressi.protectedPaths),
+        excluded_paths: pathList(form.ingressi.excludedPaths),
+        bypass_sources: addressList(form.ingressi.bypassSources),
+      }
     : { enabled: false };
 }
 

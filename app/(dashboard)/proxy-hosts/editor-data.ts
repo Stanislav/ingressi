@@ -25,7 +25,9 @@ import {
   getForwardAuthSettings,
   getGeoBlockSettings,
   getRateLimitSettings,
+  getTrustedProxiesSettings,
   getWafSettings,
+  type TrustedProxiesSettings,
 } from "@/src/lib/settings";
 import { resolveWafTuning } from "@/src/lib/waf-tuning";
 import { parsePemInfo } from "@/src/lib/certificate-overview";
@@ -85,6 +87,14 @@ async function servedCertificate(host: ProxyHost | null, certificates: Certifica
   }
 }
 
+/** How Caddy works out the client address, as far as the sign-in bypass depends on it. */
+function clientAddressOf(settings: TrustedProxiesSettings | null): HostEditorData["clientAddress"] {
+  const proxiesTrusted = (settings?.ranges ?? []).some((range) => range.trim().length > 0);
+  const headers = (settings?.client_ip_headers ?? []).map((header) => header.trim().toLowerCase()).filter(Boolean);
+  const readsForwardedFor = headers.length === 0 || headers.includes("x-forwarded-for");
+  return { proxiesTrusted, forwardedForForgeable: proxiesTrusted && readsForwardedFor && !settings?.strict };
+}
+
 /** What the pickers may list: everything for administrators, otherwise what the role can read plus what the visible hosts use. */
 async function pickerVisibility(access: Access, visibleHosts: ProxyHost[]) {
   if (access.isAdmin) return { certificate: () => true, accessList: () => true, trustAnchors: true };
@@ -122,7 +132,7 @@ export async function loadHostEditorData(
   const scope = scopeTagsFor(access, "proxy_hosts");
   const canReadWaf = can(access, "waf:read");
 
-  const [visibleHosts, certificates, accessLists, blockedSources, authentikDefaults, forwardAuthDefaults, wafSettings, rateLimit, geoblock, dns] =
+  const [visibleHosts, certificates, accessLists, blockedSources, authentikDefaults, forwardAuthDefaults, wafSettings, rateLimit, geoblock, dns, trustedProxies] =
     await Promise.all([
       listProxyHosts(scope),
       listCertificates(),
@@ -134,6 +144,7 @@ export async function loadHostEditorData(
       getRateLimitSettings(),
       getGeoBlockSettings(),
       getDnsProviderSettings(),
+      getTrustedProxiesSettings().catch(() => null),
     ]);
   const picker = await pickerVisibility(access, visibleHosts);
   const canChooseUsers = can(access, "users:read");
@@ -189,6 +200,7 @@ export async function loadHostEditorData(
     },
     certificates: certificates.filter((certificate) => picker.certificate(certificate.id)).map(toEditorCertificate),
     servedCertificate: await servedCertificate(host, certificates),
+    clientAddress: clientAddressOf(trustedProxies),
     accessLists: editorAccessLists,
     blockedSourcesActive: Boolean(blockedSources && blockedSources.rules.length > 0),
     caCertificates: caCertificates.map((ca) => ({ id: ca.id, name: ca.name })),

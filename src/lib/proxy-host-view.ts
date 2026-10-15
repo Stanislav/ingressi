@@ -68,6 +68,8 @@ export type ProtectionInput = {
   authentik: boolean;
   /** Generic forward auth: its provider ("authelia", "custom"). */
   forwardAuth: string | null;
+  /** How many addresses skip the sign-in of the host. */
+  signInSkippedFor?: number;
   /** Rate limiting rules that apply to the host. */
   rateLimit: { rules: number; first: { events: number; window: string } | null };
   /** Effective geo blocking, or null when none applies. */
@@ -111,15 +113,18 @@ export function protectionsOf(input: ProtectionInput): HostProtection[] {
   } else if (input.wafMode === "detection_only") {
     pills.push({ key: "waf_detect", kind: "waf", label: "WAF · Detect only", title: "The WAF logs requests that match its rules without blocking them" });
   }
-  if (input.sso) pills.push({ key: "sign_in", kind: "sso", label: "SSO", title: "Visitors sign in with their dashboard account" });
-  if (input.authentik) pills.push({ key: "sign_in", kind: "forward-auth", label: "Authentik", title: "Visitors sign in through Authentik" });
+  const skipped = input.signInSkippedFor
+    ? `; ${input.signInSkippedFor === 1 ? "1 address skips" : `${input.signInSkippedFor} addresses skip`} it`
+    : "";
+  if (input.sso) pills.push({ key: "sign_in", kind: "sso", label: "SSO", title: `Visitors sign in with their dashboard account${skipped}` });
+  if (input.authentik) pills.push({ key: "sign_in", kind: "forward-auth", label: "Authentik", title: `Visitors sign in through Authentik${skipped}` });
   if (input.forwardAuth) {
     const authelia = input.forwardAuth === "authelia";
     pills.push({
       key: "sign_in",
       kind: "forward-auth",
       label: authelia ? "Forward auth · Authelia" : "Forward auth",
-      title: authelia ? "Visitors sign in through Authelia" : "Requests are checked by a forward-auth server",
+      title: `${authelia ? "Visitors sign in through Authelia" : "Requests are checked by a forward-auth server"}${skipped}`,
     });
   }
   if (input.accessList) {

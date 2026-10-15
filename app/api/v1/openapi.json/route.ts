@@ -3374,6 +3374,7 @@ const spec = {
           setOutpostHostHeader: { type: "boolean" },
           protectedPaths: { type: ["array", "null"], items: { type: "string" }, description: "Paths to protect (null = all)" },
           excludedPaths: { type: ["array", "null"], items: { type: "string" }, description: "Paths to exclude from auth (bypassed while rest is protected)" },
+          bypassSources: { type: ["array", "null"], items: { type: "string" }, description: "IP addresses, CIDR ranges or private_ranges whose requests skip sign-in and reach the upstream directly. Everything else on the host (WAF, rate limits, access list, path blocks) still applies. Matched against the client address Caddy works out, so Trusted proxies applies; at most 100 entries, and a range that matches every address is refused." },
         },
       },
       LoadBalancerConfig: {
@@ -3594,6 +3595,7 @@ const spec = {
           apiBypassHeaders: { type: "array", items: { type: "string" }, description: "Requests carrying any of these headers skip forward auth" },
           protectedPaths: { type: ["array", "null"], items: { type: "string" }, description: "Paths to protect (null = all)" },
           excludedPaths: { type: ["array", "null"], items: { type: "string" }, description: "Paths to exclude from auth" },
+          bypassSources: { type: ["array", "null"], items: { type: "string" }, description: "IP addresses, CIDR ranges or private_ranges whose requests skip sign-in and reach the upstream directly. Everything else on the host (WAF, rate limits, access list, path blocks) still applies. Matched against the client address Caddy works out, so Trusted proxies applies; at most 100 entries, and a range that matches every address is refused." },
         },
       },
       IngressiForwardAuthConfig: {
@@ -3603,6 +3605,7 @@ const spec = {
           enabled: { type: "boolean" },
           protected_paths: { type: ["array", "null"], items: { type: "string" }, description: "Paths to protect (null = all)" },
           excluded_paths: { type: ["array", "null"], items: { type: "string" }, description: "Paths to exclude from auth" },
+          bypass_sources: { type: ["array", "null"], items: { type: "string" }, description: "IP addresses, CIDR ranges or private_ranges whose requests skip sign-in and reach the upstream directly. Everything else on the host (WAF, rate limits, access list, path blocks) still applies. Matched against the client address Caddy works out, so Trusted proxies applies; at most 100 entries, and a range that matches every address is refused." },
         },
       },
       RedirectRule: {

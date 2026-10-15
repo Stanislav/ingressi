@@ -17,6 +17,26 @@ Create groups on the **Groups** page to organise users ([users-and-groups.md](us
 
 Each forward-auth-protected host has its own access list of allowed users and/or groups. Access is separate from the user's role: administrators need to be granted it too.
 
+## Skipping sign-in for some addresses
+
+On a host with sign-in in front of it (the built-in sign-in, Authentik, or Authelia and other forward-auth servers), **Skip sign-in from** on the host's **Access** tab lists addresses that reach the host without signing in: IP addresses, networks in CIDR notation (`192.168.1.0/24`, `2001:db8::/32`) and `private_ranges` (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, fd00::/8 and ::1). Up to 100 entries. A range is stored as its network address, and a range that matches every address (`0.0.0.0/0`, `::/0`) is refused, since it would turn sign-in off.
+
+- Only the sign-in is skipped. The host's access list, geo blocking, WAF, rate limits, path blocks and redirects still apply, and its location rules still send the request to their own upstream.
+- It goes with **Only these paths** and **Never these paths**: a listed client skips the sign-in on every path.
+- The auth server is not asked, so the app gets no identity headers (`X-Ingressi-User`, `Remote-User`, `X-Authentik-Username`...) for these requests. An app that signs people in from those headers sees nobody. Headers a client sends under those names are removed, as for every request.
+- Authentik's outpost path and the built-in sign-in's callback answer everyone, listed or not.
+- The REST API takes the list as `bypassSources` in `authentik` and `forwardAuth`, and as `bypass_sources` in `ingressiForwardAuth`. A request that names the provider without the field keeps the stored list; `[]` or `null` removes it; a bad entry is a 400 and nothing is stored.
+
+### Which address counts
+
+The address is the client address Caddy works out, the one access list address rules and rate limits use: the address that connects to Caddy or, from a proxy listed under **Host defaults → Trusted proxies**, the one in `X-Forwarded-For` (or the headers set there). Three things decide whether the list can be relied on:
+
+1. **A proxy in front of Caddy.** Behind a CDN, another reverse proxy or Docker's own port proxy (which can present visitors as the bridge's address), the connecting address is theirs, not the visitor's. A list with `private_ranges` or a private network then lets every visitor in. Set Trusted proxies first, and test from outside the network.
+2. **How `X-Forwarded-For` is read.** By default the first entry counts, and a proxy that adds to the header instead of replacing it passes on whatever the visitor wrote. Turn on strict parsing under Trusted proxies, which reads the entry the proxy added, or name the header the proxy sets itself (`Cf-Connecting-Ip` for Cloudflare).
+3. **The list itself.** Name your own networks rather than `private_ranges`; it covers every private network the connection might come from.
+
+The editor warns about the first two while the list is not empty. [Access lists](access-lists.md#client-addresses) explain the same address.
+
 ## Identity headers
 
 On each request it lets through, the portal passes the user to the upstream in these headers, and client-sent copies of them are removed:

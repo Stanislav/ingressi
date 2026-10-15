@@ -132,19 +132,23 @@ export async function buildProtectionCoverage(context: BuildContext): Promise<Bu
     const geo = geoBlockState(globalGeo, host);
     const authentication: string[] = [];
     let partial = false;
+    const skippedFor: string[] = [];
     if (host.accessListId !== null) authentication.push(`access list: ${listNames.get(host.accessListId) ?? `#${host.accessListId}`}`);
     if (host.ingressiForwardAuth?.enabled) {
       const grant = grants.get(host.id) ?? { users: 0, groups: 0 };
       authentication.push(`built-in forward auth (${grant.users} user(s), ${grant.groups} group(s) allowed)`);
       partial ||= pathLimited(host.ingressiForwardAuth.protected_paths, host.ingressiForwardAuth.excluded_paths);
+      skippedFor.push(...(host.ingressiForwardAuth.bypass_sources ?? []));
     }
     if (host.forwardAuth?.enabled) {
       authentication.push(`forward auth: ${host.forwardAuth.provider}`);
       partial ||= pathLimited(host.forwardAuth.protectedPaths, host.forwardAuth.excludedPaths);
+      skippedFor.push(...host.forwardAuth.bypassSources);
     }
     if (host.authentik?.enabled) {
       authentication.push("Authentik");
       partial ||= pathLimited(host.authentik.protectedPaths, host.authentik.excludedPaths);
+      skippedFor.push(...host.authentik.bypassSources);
     }
     if (host.mtls?.enabled) {
       const trusted = (host.mtls.trusted_client_cert_ids?.length ?? 0) + (host.mtls.trusted_role_ids?.length ?? 0) + (host.mtls.ca_certificate_ids?.length ?? 0);
@@ -218,6 +222,7 @@ export async function buildProtectionCoverage(context: BuildContext): Promise<Bu
       geoBlockingSource: geo.source,
       authentication: authentication.length > 0 ? authentication : ["none"],
       authenticationLimitedToPaths: partial,
+      signInSkippedForAddresses: skippedFor.map((address) => clean(address, 64)),
       certificate,
       httpsRedirect: host.sslForced,
       hsts: host.hstsEnabled ? (host.hstsSubdomains ? "on, including subdomains" : "on") : "off",
@@ -304,6 +309,7 @@ export async function buildProtectionCoverage(context: BuildContext): Promise<Bu
           ["geoBlockingSource", "Geo blocking from"],
           ["authentication", "Authentication in front"],
           ["authenticationLimitedToPaths", "Authentication limited to some paths"],
+          ["signInSkippedForAddresses", "Sign-in skipped for these addresses"],
           ["certificate", "Certificate"],
           ["httpsRedirect", "HTTPS redirect"],
           ["hsts", "HSTS"],

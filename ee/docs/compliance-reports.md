@@ -73,7 +73,7 @@ Findings: expired certificates (high when a host uses them), certificates and CA
 
 | Table | Contents |
 | --- | --- |
-| Proxy hosts | Effective WAF (blocking, detection only or off, and whether the settings are global, the host's or an override), OWASP CRS, geo blocking, authentication in front (access list, built-in forward auth with its allowed users and groups, external forward auth, Authentik, mTLS, API keys) and whether it covers only some paths, certificate, HTTPS redirect, HSTS, upstream TLS verification, and WAF blocked and detected events in the period when ClickHouse analytics is configured |
+| Proxy hosts | Effective WAF (blocking, detection only or off, and whether the settings are global, the host's or an override), OWASP CRS, geo blocking, authentication in front (access list, built-in forward auth with its allowed users and groups, external forward auth, Authentik, mTLS, API keys) whether it covers only some paths and the addresses that skip sign-in, certificate, HTTPS redirect, HSTS, upstream TLS verification, and WAF blocked and detected events in the period when ClickHouse analytics is configured |
 | L4 proxy hosts | Protocol, listen address, matcher, TLS termination (the WAF and HTTP authentication do not apply) |
 | Global protection settings | WAF and geo blocking |
 | MFA coverage | Active users and administrators with and without MFA |

@@ -268,6 +268,19 @@ describe('protection coverage', () => {
     expect(document.notes.join(' ')).toContain('ClickHouse analytics is not configured');
   });
 
+  it('lists the addresses that skip sign-in, apart from the paths a sign-in is limited to', async () => {
+    const [row] = await ctx.db.select().from(schema.proxyHosts).where(eq(schema.proxyHosts.id, seed.hostAuthId));
+    const meta = JSON.parse(row.meta as string);
+    meta.cpm_forward_auth.bypass_sources = ['192.168.1.0/24', 'private_ranges', '0.0.0.0/0', 'nonsense'];
+    await ctx.db.update(schema.proxyHosts).set({ meta: JSON.stringify(meta) }).where(eq(schema.proxyHosts.id, seed.hostAuthId));
+
+    const hosts = sectionOf(await build('protection_coverage'), 'proxy_hosts');
+    // Only what the sign-in would accept from storage, and not counted as a limit to some paths.
+    expect(rowOf(hosts, 'name', 'Admin panel')).toMatchObject({ signInSkippedForAddresses: ['192.168.1.0/24', 'private_ranges'], authenticationLimitedToPaths: false });
+    expect(rowOf(hosts, 'name', 'App')).toMatchObject({ signInSkippedForAddresses: [] });
+    expect(JSON.stringify(hosts.columns)).toContain('Sign-in skipped for these addresses');
+  });
+
   it('adds WAF activity per host from aggregated ClickHouse figures', async () => {
     const queries: string[] = [];
     const analytics: AnalyticsDependencies = {
