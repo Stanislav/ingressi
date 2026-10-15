@@ -2,6 +2,13 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.6.0
+
+- **Choose a DNS provider for a single certificate in the dashboard.** **Certificates → New managed certificate** (and **Edit** on a managed certificate) takes the domains and a DNS provider: the default, or any provider set up under Certificate settings. A proxy host's **Certificate** section says how its certificate is obtained (**Obtained with**) and **Use a different DNS provider** makes a certificate for the host with the provider you pick. The default provider and the other hosts are unchanged, and a certificate uses the propagation delay and timeout of its own provider. Managed entries are no longer marked **Older entry**.
+- **A host whose certificate was never issued is flagged.** When Caddy has no certificate for a host's name 15 minutes after the host was saved, the Proxy hosts list, the host's page and the overview show **No certificate issued** instead of **No issues**, and the Certificates page shows **Not issued** with when Caddy was last asked; within the 15 minutes it shows **Obtaining**. **Not read yet** now only means the dashboard could not ask Caddy. The Certificates filter **Due for renewal** is **Needs attention** and counts these too.
+- **API:** `PUT /api/v1/certificates/{id}` with `"providerOptions": null` clears the DNS provider override (a missing field still keeps it). The rows of `GET /api/v1/certificates/overview` have `checkedAt` and the renewal states `pending` and `missing`.
+- No database migration.
+
 ## Upgrading to v2.5.0
 
 - **Exclusion dialogs let you change what an exclusion covers.** **Exclude N rules…** and the single-rule dialog on a security event edit the host (this host or every host), the path (starts with or exactly, with the request's path and the path above an ID as choices) and, per rule, the variable, and say in one sentence what will be excluded. An exclusion with neither a path nor a variable now warns first.
