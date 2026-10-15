@@ -61,6 +61,7 @@ const rows: CertificateOverviewRow[] = [
     validTo: day(31),
     expirySource: 'caddy',
     checkedAt: null,
+    issuanceError: null,
     daysLeft: 31,
     obtainedBy: { method: 'acme', challenge: 'http-01', dnsProvider: null, directory: null },
     renewal: { state: 'scheduled', renewFrom: day(1) },
@@ -84,6 +85,7 @@ const rows: CertificateOverviewRow[] = [
     validTo: day(20),
     expirySource: 'pem',
     checkedAt: null,
+    issuanceError: null,
     daysLeft: 20,
     obtainedBy: { method: 'imported' },
     renewal: { state: 'replace_soon', renewFrom: null },
@@ -104,6 +106,7 @@ const rows: CertificateOverviewRow[] = [
     validTo: null,
     expirySource: null,
     checkedAt: null,
+    issuanceError: null,
     daysLeft: null,
     obtainedBy: { method: 'acme', challenge: 'dns-01', dnsProvider: 'Cloudflare', directory: null },
     renewal: { state: 'unknown', renewFrom: null },
@@ -193,7 +196,12 @@ describe('certificates page', () => {
 
   it('says a certificate was never issued, apart from one not read yet, and offers a managed certificate with a DNS provider', () => {
     const grafana = rows[2];
-    const never: CertificateOverviewRow = { ...grafana, checkedAt: '2026-10-03T11:05:00.000Z', renewal: { state: 'missing', renewFrom: null } };
+    const never: CertificateOverviewRow = {
+      ...grafana,
+      checkedAt: '2026-10-03T11:05:00.000Z',
+      renewal: { state: 'missing', renewFrom: null },
+      issuanceError: { at: '2026-10-03T11:04:00.000Z', message: 'presenting for challenge: expected 1 zone, got 0' },
+    };
     const fresh: CertificateOverviewRow = { ...grafana, id: 'acme:9', hostId: 9, domains: ['fresh.example.com'], renewal: { state: 'pending', renewFrom: null } };
     const html = renderToStaticMarkup(
       createElement(CertificatesClient, {
@@ -213,6 +221,9 @@ describe('certificates page', () => {
     expect(html).toContain('Not issued');
     expect(html).toContain('Caddy has none; checked 3 Oct 11:05 UTC');
     expect(html).toContain('Obtaining');
+    // Caddy's last error, under the status.
+    expect(html).toContain('presenting for challenge: expected 1 zone, got 0');
+    expect(html).toContain('title="Caddy&#x27;s error of 3 Oct 11:04 UTC"');
     expect(html).toContain('No certificate');
     expect(html).not.toContain('Not read yet');
     // The failing one counts under "Needs attention", which was "Due for renewal".

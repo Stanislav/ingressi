@@ -71,6 +71,18 @@ export const CERTIFICATE_OVERVIEW_OPENAPI_SCHEMAS = {
         nullable: true,
         description: "When Caddy was last asked for the certificate over TLS; null for imported certificates and before the first check",
       },
+      issuanceError: {
+        type: "object",
+        nullable: true,
+        description:
+          "Why Caddy has no (or no renewed) certificate: its last error for one of the names, while the state is pending, missing, due, overdue or expired. " +
+          "Read from the log Caddy writes for this (tls-issuance.log) and sanitized: DNS provider credentials, URLs (reduced to scheme and host), e-mail and IP addresses and long tokens are removed, and the text is cut to 300 characters. Null when Caddy logged none.",
+        properties: {
+          at: { type: "string", format: "date-time", description: "When Caddy logged it" },
+          message: { type: "string" },
+        },
+        required: ["at", "message"],
+      },
       obtainedBy: {
         type: "object",
         properties: {
@@ -131,6 +143,7 @@ export const CERTIFICATE_OVERVIEW_OPENAPI_SCHEMAS = {
       "expirySource",
       "daysLeft",
       "checkedAt",
+      "issuanceError",
       "obtainedBy",
       "renewal",
       "usedBy",

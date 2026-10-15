@@ -53,6 +53,17 @@ describe('Caddy log writer rotation settings', () => {
     expect(writer).toMatchObject(ROLL_FIELDS);
   });
 
+  it('tls_issuance writes the certificate loggers\' errors to its own small rolled file, leaving Caddy\'s output alone', async () => {
+    const doc = await buildCaddyDocument();
+    const log = (doc as { logging: { logs: Record<string, Record<string, unknown>> } }).logging.logs.tls_issuance;
+    expect(log.writer).toMatchObject({ output: 'file', filename: '/logs/tls-issuance.log', mode: '0640', roll: true, roll_gzip: true, roll_size_mb: 10, roll_keep: 3, roll_keep_days: 30 });
+    expect(log.include).toEqual(['tls.obtain', 'tls.renew', 'tls.issuance.acme']);
+    expect(log.level).toBe('ERROR');
+    expect(log.encoder).toEqual({ format: 'json' });
+    // No "default" log is defined: Caddy keeps printing these loggers itself.
+    expect(Object.keys((doc as { logging: { logs: object } }).logging.logs)).not.toContain('default');
+  });
+
   it('does not omit any roll field (would silently fall back to Caddy defaults)', async () => {
     const doc = await buildCaddyDocument();
     const writer = loggingLogs(doc).waf_rules?.writer as Record<string, unknown>;

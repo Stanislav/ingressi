@@ -12,6 +12,7 @@ import { getCaddyApplyStatus } from "@/src/lib/caddy-apply-status";
 import { filterManagedCertificatesForAccess, getManagedCertificates } from "@/src/lib/managed-certificates";
 import { getSetupChecklist } from "@/src/lib/setup-checklist";
 import { FIRST_CERTIFICATE_GRACE_MS } from "@/src/lib/certificate-renewal";
+import { getIssuanceErrors } from "@/src/lib/tls-issuance-log";
 import type { AttentionItem, AttentionProvider } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -39,27 +40,33 @@ export const certificatesProvider: AttentionProvider = {
 
     // Certificates Caddy manages (cached TLS checks; stale ones are refreshed in the background).
     const managed = await getManagedCertificates({ cachedOnly: true });
-    for (const status of await filterManagedCertificatesForAccess(managed.certificates, access)) {
+    const managedVisible = await filterManagedCertificatesForAccess(managed.certificates, access);
+    // Why, when Caddy logged an error for the name (sanitized).
+    const failing = managedVisible.filter((status) => ["missing", "mismatch", "expired", "renewal_overdue"].includes(status.state));
+    const errors = await getIssuanceErrors(failing.map((status) => status.domain));
+    for (const status of managedVisible) {
       const hosts = status.proxyHosts.map((host) => host.name).slice(0, 3).join(", ");
       const id = `managed:${status.servername}`;
+      const why = errors.get(status.domain.trim().toLowerCase());
+      const because = why ? ` Caddy's last error: ${why.message}` : "";
       if (status.state === "missing" || status.state === "mismatch") {
         if (status.changedAt && now.getTime() - Date.parse(status.changedAt) < FIRST_CERTIFICATE_GRACE_MS) continue;
         items.push({
           id,
           severity: "critical",
           title: `No valid certificate for ${status.domain}`,
-          detail: `${status.error ?? "Caddy serves no valid certificate for this name"}. Check that the domain points at this server and ports 80 and 443 are reachable${hosts ? ` (used by ${hosts})` : ""}.`,
+          detail: `${status.error ?? "Caddy serves no valid certificate for this name"}. Check that the domain points at this server and ports 80 and 443 are reachable${hosts ? ` (used by ${hosts})` : ""}.${because}`,
           actions: view,
           at: status.checkedAt,
         });
       } else if (status.state === "expired" && status.validTo) {
-        items.push({ id, severity: "critical", title: `Certificate for ${status.domain} has expired`, detail: `It expired on ${day(status.validTo)} and Caddy could not renew it.`, actions: view, at: status.validTo });
+        items.push({ id, severity: "critical", title: `Certificate for ${status.domain} has expired`, detail: `It expired on ${day(status.validTo)} and Caddy could not renew it.${because}`, actions: view, at: status.validTo });
       } else if (status.state === "renewal_overdue" && status.validTo && status.daysLeft !== null) {
         items.push({
           id,
           severity: status.daysLeft < 7 ? "critical" : "warning",
           title: `Renewal of the certificate for ${status.domain} is failing`,
-          detail: `Caddy should have renewed it from ${status.renewsAt ? day(status.renewsAt) : "earlier"}; it expires on ${day(status.validTo)} (${daysText(status.daysLeft)}).`,
+          detail: `Caddy should have renewed it from ${status.renewsAt ? day(status.renewsAt) : "earlier"}; it expires on ${day(status.validTo)} (${daysText(status.daysLeft)}).${because}`,
           actions: view,
           at: status.renewsAt,
         });

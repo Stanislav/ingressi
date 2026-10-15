@@ -19,8 +19,10 @@ describe('OpenAPI: certificate overview', () => {
 
     const row = doc.components.schemas.CertificateOverviewRow;
     expect(row.properties.renewal.properties.state.enum).toEqual(
-      expect.arrayContaining(['scheduled', 'due', 'overdue', 'expired', 'manual', 'replace_soon', 'unknown', 'inactive'])
+      expect.arrayContaining(['scheduled', 'due', 'overdue', 'expired', 'manual', 'replace_soon', 'pending', 'missing', 'unknown', 'inactive'])
     );
+    expect(row.properties.issuanceError.properties).toHaveProperty('message');
+    expect(row.required).toEqual(expect.arrayContaining(['checkedAt', 'issuanceError']));
     expect(Object.keys(row.properties)).not.toContain('certificatePem');
 
     const documented = JSON.stringify([path, doc.components.schemas.CertificateOverview, row]);

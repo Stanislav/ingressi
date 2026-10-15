@@ -135,6 +135,7 @@ function certificateFrom(row: CertificateOverviewRow): HostCertificate {
     issuer: row.issuer,
     renewal: row.renewal.state,
     certificateId: row.certificateId,
+    issuanceError: row.issuanceError,
   };
 }
 

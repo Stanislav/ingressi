@@ -2,6 +2,12 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.7.0
+
+- **The certificate pages say why Caddy has no certificate.** Caddy's last error for the name (for example *presenting for challenge: adding temporary record for zone "example.com.": expected 1 zone, got 0 for example.com.*) is shown on the Certificates page, on the host's page and under **Needs attention**, and `issuanceError` (`at`, `message`) is in the rows of `GET /api/v1/certificates/overview`. Caddy writes the error lines of its certificate loggers to a new file, `tls-issuance.log`, in its log volume; its own output is unchanged. The text is sanitized before it is shown: stored credentials, URLs (reduced to the host), e-mail and IP addresses and long tokens are removed. See [Why a certificate is not issued](certificates.md#why-a-certificate-is-not-issued).
+- A bind-mounted `/logs` needs nothing beyond what the other log files already need (readable and writable by Caddy's group).
+- No database migration.
+
 ## Upgrading to v2.6.0
 
 - **Choose a DNS provider for a single certificate in the dashboard.** **Certificates → New managed certificate** (and **Edit** on a managed certificate) takes the domains and a DNS provider: the default, or any provider set up under Certificate settings. A proxy host's **Certificate** section says how its certificate is obtained (**Obtained with**) and **Use a different DNS provider** makes a certificate for the host with the provider you pick. The default provider and the other hosts are unchanged, and a certificate uses the propagation delay and timeout of its own provider. Managed entries are no longer marked **Older entry**.

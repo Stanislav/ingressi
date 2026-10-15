@@ -9,6 +9,7 @@ import {
   formatDate,
   obtainedView,
   renewalView,
+  renewalViewWithReason,
   rowSearchText,
   timeLeftText,
   usedBySummary,
@@ -45,6 +46,7 @@ function row(overrides: Partial<CertificateOverviewRow>): CertificateOverviewRow
     validTo: null,
     expirySource: null,
     checkedAt: null,
+    issuanceError: null,
     daysLeft: null,
     obtainedBy: { method: 'acme', challenge: 'http-01', dnsProvider: null, directory: null },
     renewal: { state: 'unknown', renewFrom: null },
@@ -91,6 +93,14 @@ describe('certificate labels', () => {
       detail: 'Caddy has none; checked 3 Oct 11:05 UTC',
     });
     expect(renewalView(row({ renewal: { state: 'missing', renewFrom: null } }), NOW).detail).toBe('Caddy has none; check its log');
+    // Caddy's last error is a line of its own under the status.
+    const failing = row({ checkedAt: '2026-10-03T11:05:00Z', renewal: { state: 'missing', renewFrom: null }, issuanceError: { at: '2026-10-03T11:04:00Z', message: 'expected 1 zone, got 0' } });
+    expect(renewalViewWithReason(failing, NOW)).toMatchObject({
+      label: 'Not issued',
+      reason: 'expected 1 zone, got 0',
+      reasonTitle: "Caddy's error of 3 Oct 11:04 UTC",
+    });
+    expect(renewalViewWithReason(row({ renewal: { state: 'missing', renewFrom: null } }), NOW).reason).toBeUndefined();
     // Not read yet: the Expires column says so, the renewal column does not repeat it.
     expect(renewalView(row({}), NOW)).toEqual({ tone: 'off', label: 'Automatic', detail: '' });
   });

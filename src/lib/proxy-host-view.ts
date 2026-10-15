@@ -5,7 +5,7 @@
  * imports, so client components use them too; the server side that fills
  * them in is src/lib/proxy-host-insights.ts.
  */
-import type { CertificateKind, RenewalState } from "./certificate-renewal";
+import type { CertificateIssuanceError, CertificateKind, RenewalState } from "./certificate-renewal";
 import type { WafEffectiveMode } from "./waf-host-mode";
 import {
   PROXY_HOST_GROUP_PREFERENCES,
@@ -164,6 +164,8 @@ export type HostCertificate =
       renewal: RenewalState;
       /** Imported or managed certificate entry, for a link to it. */
       certificateId: number | null;
+      /** Caddy's last error while obtaining or renewing it, when it logged one. */
+      issuanceError?: CertificateIssuanceError | null;
     };
 
 export type CertificateTone = "ok" | "warn" | "bad" | "off";
@@ -224,7 +226,7 @@ export type HostAttention =
     }
   | { kind: "error_rate"; tone: AttentionTone; rate: number; errors: number; requests: number }
   | { kind: "mitigation_spike"; tone: AttentionTone; count: number; baseline: number; factor: number | null; outcome: string }
-  | { kind: "certificate"; tone: AttentionTone; state: RenewalState; daysLeft: number | null };
+  | { kind: "certificate"; tone: AttentionTone; state: RenewalState; daysLeft: number | null; error?: CertificateIssuanceError };
 
 /** A 5xx share at or above this over 24 hours (with at least HIGH_ERROR_RATE_MIN_REQUESTS requests) needs attention. */
 export const HIGH_ERROR_RATE = 0.05;
@@ -279,7 +281,8 @@ export function sortAttention(items: HostAttention[]): HostAttention[] {
 export function certificateAttention(certificate: HostCertificate): HostAttention | null {
   if (!certificate.visible) return null;
   const { renewal, daysLeft } = certificate;
-  if (renewal === "expired" || renewal === "overdue" || renewal === "missing") return { kind: "certificate", tone: "bad", state: renewal, daysLeft };
+  const error = certificate.issuanceError ? { error: certificate.issuanceError } : {};
+  if (renewal === "expired" || renewal === "overdue" || renewal === "missing") return { kind: "certificate", tone: "bad", state: renewal, daysLeft, ...error };
   if (renewal === "replace_soon") return { kind: "certificate", tone: daysLeft !== null && daysLeft < 7 ? "bad" : "warn", state: renewal, daysLeft };
   return null;
 }

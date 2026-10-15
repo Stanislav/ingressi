@@ -114,6 +114,7 @@ import {
   safeSystemErrorCode,
 } from "./caddy-apply-error";
 import { readCaddyApplyState, recordCaddyApplyResult, type CaddyApplyFailureCode } from "./caddy-apply-status";
+import { TLS_ISSUANCE_LOGGERS } from "./tls-issuance-log";
 import { withCoalescedClusterLock } from "./db/locks";
 import {
   accessListRouteName,
@@ -3420,6 +3421,16 @@ async function buildCaddyDocumentFromDatabase() {
       writer: { output: "file", filename: "/logs/waf-rules.log", mode: "0640", ...rollSettings },
       encoder: { format: "json" },
       include: ["http.handlers.waf"],
+      level: "ERROR"
+    },
+    // Why a certificate could not be obtained or renewed: the ERROR lines of
+    // the certificate loggers, which src/lib/tls-issuance-log.ts reads for the
+    // certificate pages (sanitized there). Caddy's own output keeps all of
+    // them. Few lines are written, so the file rolls small.
+    tls_issuance: {
+      writer: { output: "file", filename: "/logs/tls-issuance.log", mode: "0640", ...rollSettings, roll_size_mb: 10, roll_keep: 3 },
+      encoder: { format: "json" },
+      include: [...TLS_ISSUANCE_LOGGERS],
       level: "ERROR"
     }
   };

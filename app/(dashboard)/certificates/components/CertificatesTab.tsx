@@ -34,7 +34,7 @@ import {
   formatDate,
   noExpiryText,
   obtainedView,
-  renewalView,
+  renewalViewWithReason,
   rowSearchText,
   timelineDetail,
   usedBySummary,
@@ -313,7 +313,7 @@ function rowParts(row: CertificateOverviewRow, now: number) {
     more,
     second,
     obtained,
-    renewal: renewalView(row, now),
+    renewal: renewalViewWithReason(row, now),
     expiryTone,
     hostLinks,
   };
@@ -373,6 +373,11 @@ function CertificateTableRow({
         <span className="flex flex-col">
           <StatusDot tone={renewal.tone} label={renewal.label} className={cn(renewal.tone !== "ok" && renewal.tone !== "off" && "font-semibold")} />
           {renewal.detail && <span className="text-xs text-soft">{renewal.detail}</span>}
+          {renewal.reason && (
+            <span className="line-clamp-3 max-w-[300px] text-xs text-soft [overflow-wrap:anywhere]" title={renewal.reasonTitle} data-testid="certificate-issuance-error">
+              {renewal.reason}
+            </span>
+          )}
         </span>
       </TableCell>
       <TableCell>
@@ -419,6 +424,11 @@ function CertificateCard({
         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <StatusDot tone={renewal.tone} label={renewal.label} className={cn(renewal.tone !== "ok" && renewal.tone !== "off" && "font-semibold")} />
           {renewal.detail && <span className="text-xs text-soft">{renewal.detail}</span>}
+          {renewal.reason && (
+            <span className="line-clamp-3 max-w-[300px] text-xs text-soft [overflow-wrap:anywhere]" title={renewal.reasonTitle} data-testid="certificate-issuance-error">
+              {renewal.reason}
+            </span>
+          )}
         </span>
         <span className="text-xs text-soft">
           {row.validTo ? (

@@ -64,6 +64,9 @@ export type CertificateRenewal = {
   renewFrom: string | null;
 };
 
+/** The last error Caddy logged while obtaining or renewing a certificate, sanitized (src/lib/tls-issuance-log.ts). */
+export type CertificateIssuanceError = { at: string; message: string };
+
 export type CertificateOverviewRow = {
   /** "acme:<proxy host id>" or "certificate:<certificate id>". */
   id: string;
@@ -92,6 +95,11 @@ export type CertificateOverviewRow = {
   daysLeft: number | null;
   /** When Caddy was last asked for the certificate (ISO 8601); null before the first check. */
   checkedAt: string | null;
+  /**
+   * Why Caddy has no (or no renewed) certificate: its last error for one of the names, while the row is
+   * pending, missing, due, overdue or expired; null when it logged none (or the certificate is fine).
+   */
+  issuanceError: CertificateIssuanceError | null;
   obtainedBy: CertificateObtainedBy;
   renewal: CertificateRenewal;
   usedBy: CertificateUser[];

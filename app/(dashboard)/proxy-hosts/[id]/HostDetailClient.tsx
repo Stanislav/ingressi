@@ -178,7 +178,7 @@ function IncidentBanner({
   const actionClass = "flex h-8 items-center rounded-lg border border-line2 bg-panel px-3 text-[13px] text-foreground hover:bg-raise";
   let tone: BannerTone = item.tone === "bad" ? "bad" : "warn";
   let title: string;
-  let body: string;
+  let body: ReactNode;
   const actions: ReactNode[] = [];
   switch (item.kind) {
     case "error_burst": {
@@ -246,6 +246,16 @@ function IncidentBanner({
           : item.state === "missing"
             ? "Obtaining the first certificate has not worked since the host was saved, so HTTPS fails. Check Caddy's log for the challenge error, that the DNS provider can edit the domain's zone (DNS-01), that the domain points at this server and that ports 80 and 443 are reachable."
             : "Check Caddy's log for challenge errors, that the domain points at this server and that ports 80 and 443 are reachable.";
+      if (item.error) {
+        body = (
+          <>
+            {body}
+            <span className="mt-1 block [overflow-wrap:anywhere]" data-testid="certificate-issuance-error">
+              Caddy&apos;s last error ({time(Date.parse(item.error.at))}): {item.error.message}
+            </span>
+          </>
+        );
+      }
       if (allowed.certificates) {
         actions.push(
           <Link key="certificates" href="/certificates" className={actionClass}>

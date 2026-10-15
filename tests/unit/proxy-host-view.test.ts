@@ -124,6 +124,10 @@ describe('certificates', () => {
       state: 'missing',
       daysLeft: null,
     });
+    // Caddy's last error goes along, when there is one.
+    expect(
+      certificateAttention(cert({ renewal: 'missing', daysLeft: null, validTo: null, issuanceError: { at: '2026-10-03T11:05:00.000Z', message: 'expected 1 zone, got 0' } }))
+    ).toMatchObject({ state: 'missing', error: { message: 'expected 1 zone, got 0' } });
     expect(certificateAttention(cert({ renewal: 'pending', daysLeft: null, validTo: null }))).toBeNull();
     expect(certificateAttention(cert({ renewal: 'unknown', daysLeft: null, validTo: null }))).toBeNull();
     expect(attentionLabel({ kind: 'certificate', tone: 'bad', state: 'missing', daysLeft: null }, () => '')).toBe('No certificate issued');

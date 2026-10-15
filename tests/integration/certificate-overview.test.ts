@@ -14,6 +14,8 @@ const ctx = vi.hoisted(() => ({
   /** Names Caddy answered without a certificate, and names whose handshake did not work. */
   none: new Set<string>(),
   unavailable: new Set<string>(),
+  /** Caddy's last error per name (tls-issuance.log), as the reader returns them. */
+  issuance: new Map<string, { at: string; message: string }>(),
   asked: [] as string[][],
   dnsProvider: null as null | { providers: Record<string, Record<string, string>>; default: string | null },
   acme: null as null | { caUrl?: string },
@@ -37,6 +39,17 @@ vi.mock('../../src/lib/managed-certificates', async (importOriginal) => ({
       if (cert) result.set(domain, { kind: 'served', expiry: { domain, checkedAt, ...cert } });
       else if (ctx.none.has(domain)) result.set(domain, { kind: 'none', checkedAt });
       else if (ctx.unavailable.has(domain)) result.set(domain, { kind: 'unavailable', checkedAt });
+    }
+    return result;
+  }),
+}));
+vi.mock('../../src/lib/tls-issuance-log', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/lib/tls-issuance-log')>()),
+  getIssuanceErrors: vi.fn(async (domains: string[]) => {
+    const result = new Map();
+    for (const domain of domains) {
+      const found = ctx.issuance.get(domain.trim().toLowerCase());
+      if (found) result.set(domain.trim().toLowerCase(), found);
     }
     return result;
   }),
@@ -134,6 +147,7 @@ beforeEach(async () => {
   ctx.served.clear();
   ctx.none.clear();
   ctx.unavailable.clear();
+  ctx.issuance.clear();
   ctx.asked = [];
   ctx.dnsProvider = null;
   ctx.acme = null;
@@ -231,6 +245,26 @@ describe('buildCertificateOverview', () => {
     // Caddy could not be asked, or has not been yet: nothing is known about the certificate.
     expect(byHost(unreadable)).toMatchObject({ checkedAt: '2026-10-03T11:59:00.000Z', renewal: { state: 'unknown' } });
     expect(byHost(unasked)).toMatchObject({ checkedAt: null, renewal: { state: 'unknown' } });
+  });
+
+  it('says why a certificate is not in order, from Caddy\'s last error for one of its names', async () => {
+    const stuck = await addHost('Stuck', ['stuck.example.com', 'www.stuck.example.com'], { updatedAt: iso(-1) });
+    const fresh = await addHost('Fresh', ['fresh.example.com']);
+    const fine = await addHost('Fine', ['fine.example.com'], { updatedAt: iso(-1) });
+    ctx.none.add('stuck.example.com');
+    ctx.none.add('fresh.example.com');
+    ctx.served.set('fine.example.com', { validFrom: iso(-10), validTo: iso(80), issuer: "Let's Encrypt", keyType: 'ECDSA P-256' });
+    ctx.issuance.set('stuck.example.com', { at: iso(-0.5), message: 'older' });
+    ctx.issuance.set('www.stuck.example.com', { at: iso(-0.1), message: 'presenting for challenge: expected 1 zone, got 0' });
+    ctx.issuance.set('fresh.example.com', { at: iso(-0.001), message: 'first attempt failed' });
+    // A certificate that is in order shows no reason, whatever the log still holds from before.
+    ctx.issuance.set('fine.example.com', { at: iso(-3), message: 'long ago' });
+
+    const { certificates } = await buildCertificateOverview(adminAccess(1), { now: NOW });
+    const byHost = (id: number) => certificates.find((row) => row.id === `acme:${id}`)!;
+    expect(byHost(stuck)).toMatchObject({ renewal: { state: 'missing' }, issuanceError: { message: 'presenting for challenge: expected 1 zone, got 0' } });
+    expect(byHost(fresh)).toMatchObject({ renewal: { state: 'pending' }, issuanceError: { message: 'first attempt failed' } });
+    expect(byHost(fine)).toMatchObject({ renewal: { state: 'scheduled' }, issuanceError: null });
   });
 
   it('counts a managed entry as missing from the last time it or a host using it was saved', async () => {

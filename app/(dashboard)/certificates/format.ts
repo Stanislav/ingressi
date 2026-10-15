@@ -56,7 +56,22 @@ export function formatCheckedAt(value: string | number): string {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
 }
 
-export type RenewalView = { tone: StatusTone; label: string; detail: string };
+export type RenewalView = {
+  tone: StatusTone;
+  label: string;
+  detail: string;
+  /** Caddy's last error, when it logged one for a certificate that is not in order ("" otherwise). */
+  reason?: string;
+  /** When Caddy logged it, for a tooltip. */
+  reasonTitle?: string;
+};
+
+/** The renewal column of a row, with Caddy's last error when there is one. */
+export function renewalViewWithReason(row: CertificateOverviewRow, now: number): RenewalView {
+  const view = renewalView(row, now);
+  if (!row.issuanceError) return view;
+  return { ...view, reason: row.issuanceError.message, reasonTitle: `Caddy's error of ${formatCheckedAt(row.issuanceError.at)}` };
+}
 
 /** The renewal column: a status with one line of detail ("" when the status says it all). */
 export function renewalView(row: CertificateOverviewRow, now: number): RenewalView {

@@ -20,6 +20,7 @@ import { parseStoredCertificateProviderOptions } from "./certificate-provider-op
 import { getProviderDefinition } from "./dns-providers";
 import { getAcmeSettings, getDnsProviderSettings } from "./settings";
 import { listL4ProxyHosts } from "./models/l4-proxy-hosts";
+import { getIssuanceErrors } from "./tls-issuance-log";
 import { certificateKeyType, getManagedCertificateReadings, type ManagedCertificateExpiry, type ManagedCertificateReading } from "./managed-certificates";
 import {
   certificateRenewal,
@@ -358,16 +359,32 @@ export async function buildCertificateOverview(access: Access, options: Certific
     );
   }
 
+  // Why the certificates that are not in order are not: Caddy's last error for one of their names.
+  const failing = rows.filter((row) => row.kind !== "imported" && ISSUANCE_ERROR_STATES.includes(row.renewal.state));
+  if (failing.length > 0) {
+    const errors = await getIssuanceErrors(failing.flatMap((row) => row.domains));
+    for (const row of failing) {
+      for (const domain of row.domains) {
+        const found = errors.get(domain.trim().toLowerCase());
+        if (found && (!row.issuanceError || found.at > row.issuanceError.at)) row.issuanceError = found;
+      }
+    }
+  }
+
   rows.sort(compareRows);
   return { generatedAt: new Date(now).toISOString(), certificates: rows };
 }
 
+/** The renewal states in which Caddy's last error says why. */
+const ISSUANCE_ERROR_STATES: string[] = ["pending", "missing", "due", "overdue", "expired"];
+
 function finishRow(
-  { noCertificate, ...row }: Omit<CertificateOverviewRow, "daysLeft" | "renewal"> & { noCertificate?: { savedAt: string | null } },
+  { noCertificate, ...row }: Omit<CertificateOverviewRow, "daysLeft" | "renewal" | "issuanceError"> & { noCertificate?: { savedAt: string | null } },
   now: number
 ): CertificateOverviewRow {
   return {
     ...row,
+    issuanceError: null,
     daysLeft: row.validTo ? daysUntil(row.validTo, now) : null,
     renewal: certificateRenewal({ ...row, noCertificate }, now),
   };

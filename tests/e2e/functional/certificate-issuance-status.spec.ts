@@ -12,6 +12,7 @@
  * since waiting for the real grace period would take 15 minutes.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { findHostRow } from '../../helpers/proxy-api';
 import { webSql } from '../../helpers/e2e-sql';
 
@@ -25,7 +26,17 @@ type OverviewRow = {
   hostId: number | null;
   checkedAt: string | null;
   renewal: { state: string };
+  issuanceError: { at: string; message: string } | null;
 };
+
+/** Output of a command in the caddy container ("" when it fails). */
+function inCaddy(...command: string[]): string {
+  try {
+    return execFileSync('docker', ['exec', 'ingressi-caddy', ...command], { encoding: 'utf-8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return '';
+  }
+}
 
 async function overviewRowOf(page: Page, hostId: number): Promise<OverviewRow | undefined> {
   const res = await page.request.get(`${API}/certificates/overview`);
@@ -78,6 +89,23 @@ test.describe.serial('Host without a certificate', () => {
     // When Caddy was last asked is part of the answer.
     expect((await overviewRowOf(page, hostId))!.checkedAt).not.toBeNull();
 
+    // Why: Caddy's own error for the name, from the log it writes for the dashboard.
+    await expect
+      .poll(async () => (await overviewRowOf(page, hostId))?.issuanceError?.message ?? '', { timeout: 90_000, intervals: [1000, 2000, 3000] })
+      .not.toBe('');
+    const reason = (await overviewRowOf(page, hostId))!.issuanceError!;
+    expect(Date.parse(reason.at)).not.toBeNaN();
+    // Sanitized: no address of a request (ACME order and account URLs, API keys) survives.
+    expect(reason.message).not.toMatch(/https?:\/\/[^\s/]+\//);
+    expect(reason.message).not.toMatch(/\((order|ca|account)=/);
+    expect(reason.message.length).toBeLessThanOrEqual(300);
+
+    // The log is Caddy's own, group-readable for the dashboard, and Caddy's output still has the same lines.
+    expect(inCaddy('ls', '-l', '/logs/tls-issuance.log')).toMatch(/^-rw-r-----/);
+    expect(inCaddy('grep', '-c', domain, '/logs/tls-issuance.log').trim()).not.toBe('0');
+    const stderr = execFileSync('sh', ['-c', 'docker logs --since 30m ingressi-caddy 2>&1'], { encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
+    expect(stderr).toContain('"logger":"tls.obtain"');
+
     // The proxy hosts list: no longer "No issues".
     const row = await findHostRow(page, name);
     await expect(row.getByText('No certificate issued')).toBeVisible();
@@ -87,6 +115,8 @@ test.describe.serial('Host without a certificate', () => {
     await page.goto(`/proxy-hosts/${hostId}`);
     await expect(page.getByText('No certificate issued').first()).toBeVisible();
     await expect(page.getByText('Caddy has no certificate for this host.')).toBeVisible();
+    await expect(page.getByTestId('certificate-issuance-error')).toContainText("Caddy's last error");
+    await expect(page.getByTestId('certificate-issuance-error')).toContainText(reason.message.slice(0, 40));
 
     // The Certificates page: not "Not read yet", and counted under "Needs attention".
     await page.goto('/certificates');
@@ -94,6 +124,7 @@ test.describe.serial('Host without a certificate', () => {
     await expect(certificateRow.getByText('Not issued')).toBeVisible();
     await expect(certificateRow.getByText('No certificate')).toBeVisible();
     await expect(certificateRow.getByText('Not read yet')).toHaveCount(0);
+    await expect(certificateRow.getByTestId('certificate-issuance-error')).toContainText(reason.message.slice(0, 40));
     await page.getByRole('group', { name: 'Status' }).getByRole('button', { name: /needs attention/i }).click();
     await expect(certificateRow).toBeVisible();
   });

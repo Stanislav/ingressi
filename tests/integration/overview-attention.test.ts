@@ -11,9 +11,15 @@ import { createTestDb, type TestDb } from '../helpers/db';
 import * as schema from '../../src/lib/db/schema';
 import { createSelfSignedServerCertificate } from '../helpers/certs';
 
-const ctx = vi.hoisted(() => ({ db: null as unknown as TestDb, role: 'admin', userId: 1 }));
+const ctx = vi.hoisted(() => ({ db: null as unknown as TestDb, role: 'admin', userId: 1, issuance: new Map<string, { at: string; message: string }>() }));
 
 vi.mock('../../src/lib/db', async () => (await import('../helpers/db-module')).mockDbModule(() => ctx.db));
+
+// Caddy's last error per name (tls-issuance.log); the reader itself is tested in tls-issuance-log.test.ts.
+vi.mock('../../src/lib/tls-issuance-log', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/lib/tls-issuance-log')>()),
+  getIssuanceErrors: vi.fn(async (domains: string[]) => new Map([...ctx.issuance].filter(([domain]) => domains.includes(domain)))),
+}));
 
 vi.mock('../../src/lib/api-auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/lib/api-auth')>();
@@ -48,6 +54,7 @@ async function user(email: string, role: string): Promise<number> {
 beforeEach(async () => {
   ctx.db = createTestDb();
   ctx.role = 'admin';
+  ctx.issuance.clear();
   vi.clearAllMocks();
   await resetCaddyApplyStatusForTests();
   setManagedCertificateProbeForTests(null);
@@ -59,6 +66,32 @@ beforeEach(async () => {
 afterEach(() => setManagedCertificateProbeForTests(null));
 
 const admin = (): Access => builtInAccess(adminId, 'admin');
+
+describe('the certificates source', () => {
+  async function missingHost() {
+    await ctx.db.insert(schema.proxyHosts).values({ name: 'Auth', domains: '["auth.example.com"]', upstreams: '[]', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    setManagedCertificateProbeForTests(async () => ({ kind: 'missing' }));
+    await getManagedCertificates();
+  }
+  const detailOf = async () => (await collectAttention(admin())).items.find((item) => item.source === 'certificates')!.detail;
+
+  it('adds Caddy\'s last error for the name to a certificate that was never issued', async () => {
+    await missingHost();
+    expect(await detailOf()).not.toContain('last error');
+    ctx.issuance.set('auth.example.com', { at: stamp(), message: 'presenting for challenge: expected 1 zone, got 0' });
+    expect(await detailOf()).toMatch(/ Caddy's last error: presenting for challenge: expected 1 zone, got 0$/);
+  });
+
+  it('does not ask for the error of a certificate that is in order', async () => {
+    await ctx.db.insert(schema.proxyHosts).values({ name: 'Auth', domains: '["auth.example.com"]', upstreams: '[]', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    const served = createSelfSignedServerCertificate('auth.example.com', ['auth.example.com'], 80);
+    setManagedCertificateProbeForTests(async () => ({ kind: 'certificate', pem: served.certificatePem }));
+    await getManagedCertificates();
+    ctx.issuance.set('auth.example.com', { at: stamp(), message: 'an old failure' });
+    const items = (await collectAttention(admin())).items.filter((item) => item.source === 'certificates');
+    expect(items.map((item) => item.detail).join(' ')).not.toContain('an old failure');
+  });
+});
 
 describe('the registry', () => {
   const extra: AttentionProvider[] = [];
