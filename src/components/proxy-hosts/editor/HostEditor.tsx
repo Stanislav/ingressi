@@ -87,12 +87,12 @@ function sectionSummary(section: SectionId, form: HostForm, data: HostEditorData
       return parts.length > 0 ? parts.join(" · ") : "Public";
     }
     case "certificate": {
-      if (form.certificateId === null) {
-        const served = data.host?.certificateId === null ? data.servedCertificate : null;
-        if (served) return `Managed by Caddy · ${Math.max(0, Math.floor((new Date(served.validTo).getTime() - Date.now()) / 86_400_000))} days left`;
-        return "Managed by Caddy";
-      }
-      return data.certificates.find((certificate) => certificate.id === form.certificateId)?.name ?? "Chosen certificate";
+      // Caddy's reading is of the saved choice: a changed, unsaved selection has none yet.
+      const served = data.host !== null && form.certificateId === data.host.certificateId ? data.servedCertificate : null;
+      const left = served ? ` · ${Math.max(0, Math.floor((new Date(served.validTo).getTime() - Date.now()) / 86_400_000))} days left` : "";
+      if (form.certificateId === null) return `Managed by Caddy${left}`;
+      const chosen = data.certificates.find((certificate) => certificate.id === form.certificateId);
+      return `${chosen?.name ?? "Chosen certificate"}${chosen?.type === "managed" ? left : ""}`;
     }
     case "headers":
       return `HSTS ${form.hstsEnabled ? "on" : "off"}`;

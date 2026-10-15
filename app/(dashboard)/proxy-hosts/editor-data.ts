@@ -59,10 +59,23 @@ export function toEditorCertificate(certificate: Certificate): EditorCertificate
   };
 }
 
-async function servedCertificate(host: ProxyHost | null): Promise<ServedCertificate | null> {
-  if (!host || host.certificateId !== null || host.domains.length === 0) return null;
+/**
+ * What Caddy serves for the host's saved certificate choice: for the host's
+ * names when Caddy manages them (automatic), for the entry's names when the
+ * host uses a managed certificate. Imported certificates are read from their PEM.
+ */
+async function servedCertificate(host: ProxyHost | null, certificates: Certificate[]): Promise<ServedCertificate | null> {
+  if (!host) return null;
+  let names: string[];
+  if (host.certificateId === null) names = host.domains;
+  else {
+    const chosen = certificates.find((certificate) => certificate.id === host.certificateId);
+    if (chosen?.type !== "managed") return null;
+    names = chosen.domainNames;
+  }
+  if (names.length === 0) return null;
   try {
-    const found = await getManagedCertificateExpiry(host.domains.slice(0, 20), { waitMs: SERVED_CERTIFICATE_WAIT_MS });
+    const found = await getManagedCertificateExpiry(names.slice(0, 20), { waitMs: SERVED_CERTIFICATE_WAIT_MS });
     const entries = [...found.values()];
     if (entries.length === 0) return null;
     const soonest = entries.reduce((a, b) => (a.validTo <= b.validTo ? a : b));
@@ -175,7 +188,7 @@ export async function loadHostEditorData(
       groupIds: grants.filter((entry) => entry.groupId !== null).map((entry) => entry.groupId!),
     },
     certificates: certificates.filter((certificate) => picker.certificate(certificate.id)).map(toEditorCertificate),
-    servedCertificate: await servedCertificate(host),
+    servedCertificate: await servedCertificate(host, certificates),
     accessLists: editorAccessLists,
     blockedSourcesActive: Boolean(blockedSources && blockedSources.rules.length > 0),
     caCertificates: caCertificates.map((ca) => ({ id: ca.id, name: ca.name })),

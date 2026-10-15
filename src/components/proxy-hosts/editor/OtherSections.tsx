@@ -51,9 +51,12 @@ export function CertificateSection() {
   // The sheet that creates a managed certificate with another DNS provider, or edits the chosen one.
   const [sheet, setSheet] = useState<"new" | "edit" | null>(null);
   const chosen = form.certificateId === null ? null : data.certificates.find((certificate) => certificate.id === form.certificateId) ?? null;
-  const served = form.certificateId === null && data.host?.certificateId === null ? data.servedCertificate : null;
+  // Caddy's reading is of the saved choice: a changed, unsaved selection has none yet.
+  const served = data.host !== null && form.certificateId === data.host.certificateId ? data.servedCertificate : null;
   const uncovered = chosen ? form.domains.filter((domain) => !covered(domain, chosen.domains)) : [];
   const managed = chosen?.type === "managed" ? chosen : null;
+  const managedReading = managed ? served : null;
+  const expiresAt = chosen?.expiresAt ?? managedReading?.validTo ?? null;
   // Imported certificates are not obtained: only automatic hosts and managed entries have a challenge.
   const obtainedWith = chosen && !managed ? null : describeChallenge(effectiveChallenge(data.dnsChoices, managed?.provider ?? null));
   const otherProvider = data.dnsChoices.providers.find((provider) => provider.name !== data.dnsChoices.defaultProvider);
@@ -89,13 +92,14 @@ export function CertificateSection() {
               {chosen.domains.length > 0 ? chosen.domains.map((domain) => <span key={domain} className="num">{domain}</span>) : <span className="text-soft">No names recorded</span>}
             </InfoCell>
             <InfoCell label="Issuer">
-              <span>{chosen.issuer ?? (chosen.type === "imported" ? "Unknown" : "Obtained by Caddy")}</span>
+              <span>{chosen.issuer ?? managedReading?.issuer ?? (chosen.type === "imported" ? "Unknown" : "Obtained by Caddy")}</span>
+              {managedReading?.keyType && <span className="text-xs text-soft">{managedReading.keyType}</span>}
             </InfoCell>
             <InfoCell label="Expires">
-              {chosen.expiresAt ? (
+              {expiresAt ? (
                 <>
-                  <span>{formatDay(chosen.expiresAt)}</span>
-                  <span className={cn("num text-xs", daysLeft(chosen.expiresAt) < 14 ? "text-warn" : "text-soft")}>{daysLeft(chosen.expiresAt)} days</span>
+                  <span>{formatDay(expiresAt)}</span>
+                  <span className={cn("num text-xs", daysLeft(expiresAt) < 14 ? "text-warn" : "text-soft")}>{daysLeft(expiresAt)} days</span>
                 </>
               ) : (
                 <span className="text-soft">Not known here</span>
@@ -110,7 +114,7 @@ export function CertificateSection() {
               </InfoCell>
             )}
           </>
-        ) : served ? (
+        ) : served && form.certificateId === null ? (
           <>
             <InfoCell label="Covers">
               {served.domains.map((domain) => (

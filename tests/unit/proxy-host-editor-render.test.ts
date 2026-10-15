@@ -23,7 +23,7 @@ import type { ProxyHost } from '@/src/lib/models/proxy-hosts';
 import type { HostEditorData } from '@/src/components/proxy-hosts/editor/types';
 import { HostEditor } from '@/src/components/proxy-hosts/editor/HostEditor';
 import { EditorProvider, type EditorContextValue } from '@/src/components/proxy-hosts/editor/fields';
-import { hostToForm } from '@/src/components/proxy-hosts/editor/model';
+import { hostToForm, type HostForm } from '@/src/components/proxy-hosts/editor/model';
 import { SecuritySection } from '@/src/components/proxy-hosts/editor/SecuritySection';
 import { AccessSection } from '@/src/components/proxy-hosts/editor/AccessSection';
 import { AdvancedSection, CertificateSection, HeadersSection } from '@/src/components/proxy-hosts/editor/OtherSections';
@@ -112,8 +112,8 @@ function data(overrides: Partial<HostEditorData> = {}): HostEditorData {
   };
 }
 
-function inEditor(element: ReactElement, editorData: HostEditorData = data()): string {
-  const form = hostToForm(editorData.host!);
+function inEditor(element: ReactElement, editorData: HostEditorData = data(), formOverrides: Partial<HostForm> = {}): string {
+  const form = { ...hostToForm(editorData.host!), ...formOverrides };
   const value: EditorContextValue = {
     form,
     saved: form,
@@ -294,6 +294,44 @@ describe('host editor sections', () => {
     const imported = inEditor(createElement(CertificateSection), data({ dnsChoices, host: { ...host, certificateId: 2 } }));
     expect(imported).not.toContain('Obtained with');
     expect(imported).not.toContain('Edit certificate');
+  });
+
+  it('Certificate: shows what Caddy serves for the saved choice, a managed entry included', () => {
+    const validTo = new Date(Date.now() + 60 * 86_400_000 + 3_600_000).toISOString();
+    const served = { domains: ['app.example.com'], issuer: 'R11', keyType: 'ECDSA P-256', validTo };
+    const managed = { id: 5, name: 'Shop', type: 'managed', domains: ['app.example.com'], expiresAt: null, issuer: null, provider: null };
+    const onManaged = { host: { ...host, certificateId: 5 }, certificates: [managed] };
+
+    // Saved with the managed entry: the same issuer, key and expiry as the overview.
+    const known = inEditor(createElement(CertificateSection), data({ ...onManaged, servedCertificate: served }));
+    expect(known).toContain('R11');
+    expect(known).toContain('ECDSA P-256');
+    expect(known).toContain('60 days');
+    expect(known).not.toContain('Not known here');
+    expect(known).not.toContain('Obtained by Caddy');
+    // Not read yet: the placeholders stay.
+    const unread = inEditor(createElement(CertificateSection), data(onManaged));
+    expect(unread).toContain('Obtained by Caddy');
+    expect(unread).toContain('Not known here');
+
+    // A changed, unsaved selection has no reading yet, in either direction.
+    const toAutomatic = inEditor(createElement(CertificateSection), data({ ...onManaged, servedCertificate: served }), { certificateId: null });
+    expect(toAutomatic).not.toContain('R11');
+    expect(toAutomatic).toContain('Obtained and renewed automatically once the host is saved.');
+    const toManaged = inEditor(createElement(CertificateSection), data({ certificates: [managed], servedCertificate: served }), { certificateId: 5 });
+    expect(toManaged).not.toContain('R11');
+    expect(toManaged).toContain('Not known here');
+
+    // Automatic stays as it was; an imported certificate keeps the expiry of its PEM.
+    expect(inEditor(createElement(CertificateSection), data({ servedCertificate: served }))).toContain('R11');
+    const imported = inEditor(createElement(CertificateSection), data({ host: { ...host, certificateId: 2 }, servedCertificate: served }));
+    expect(imported).toContain('Example CA');
+    expect(imported).not.toContain('R11');
+
+    // The tab's summary says the same.
+    const tabs = (editorData: HostEditorData) => renderToStaticMarkup(createElement(HostEditor, { data: editorData }));
+    expect(tabs(data({ ...onManaged, servedCertificate: served }))).toContain('title="Shop · 60 days left"');
+    expect(tabs(data(onManaged))).toContain('title="Shop"');
   });
 
   it('Advanced: raw Caddy JSON is read-only for users who are not administrators', () => {

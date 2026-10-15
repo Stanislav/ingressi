@@ -42,6 +42,8 @@ import * as createPreviewRoute from '../../app/api/v1/proxy-hosts/preview/route'
 import * as updatePreviewRoute from '../../app/api/v1/proxy-hosts/[id]/preview/route';
 import * as approveRoute from '../../app/api/v1/change-requests/[id]/approve/route';
 import { first } from '@/src/lib/db/ops';
+import { setManagedCertificateProbeForTests } from '@/src/lib/managed-certificates';
+import { createSelfSignedServerCertificate } from '../helpers/certs';
 
 let tokens: Tokens;
 let hosts: Hosts;
@@ -223,6 +225,34 @@ describe('host editor pages', () => {
     expect(fresh.props.data).toMatchObject({ mode: 'create', host: null, template: null, initialDomain: 'new.example.com', isAdmin: true });
     const copy = (await NewProxyHostPage({ searchParams: Promise.resolve({ from: String(hosts.dev), domain: '<script>' }) })) as { props: { data: Record<string, any> } };
     expect(copy.props.data).toMatchObject({ template: { id: hosts.dev }, initialDomain: null });
+  });
+
+  it('read what Caddy serves for the names of the managed certificate a host uses, not the host\'s own', async () => {
+    ctx.sessionUserId = ADMIN;
+    const shop = createSelfSignedServerCertificate('shop.example.com', ['shop.example.com'], 60);
+    setManagedCertificateProbeForTests(async (servername) => (servername === 'shop.example.com' ? { kind: 'certificate', pem: shop.certificatePem } : { kind: 'missing' }));
+    try {
+      const now = new Date().toISOString();
+      const addCertificate = async (type: 'managed' | 'imported') =>
+        (await first(ctx.db.insert(schema.certificates).values({ name: `Shop ${type}`, type, domainNames: '["shop.example.com"]', createdAt: now, updatedAt: now }).returning()))!.id;
+      const served = async () => {
+        const page = (await ProxyHostPage({ params: Promise.resolve({ id: String(hosts.prod) }) })) as { props: { editor: Record<string, any> } };
+        return page.props.editor.servedCertificate;
+      };
+      const use = (certificateId: number | null) => ctx.db.update(schema.proxyHosts).set({ certificateId }).where(eq(schema.proxyHosts.id, hosts.prod));
+
+      // Automatic: app.example.com, which Caddy has no certificate for.
+      expect(await served()).toBeNull();
+
+      await use(await addCertificate('managed'));
+      expect(await served()).toMatchObject({ domains: ['shop.example.com'], issuer: 'Ingressi E2E', keyType: 'RSA 2048' });
+
+      // An imported certificate is read from its PEM, not from Caddy.
+      await use(await addCertificate('imported'));
+      expect(await served()).toBeNull();
+    } finally {
+      setManagedCertificateProbeForTests(null);
+    }
   });
 
   it('keep certificate keys and PEM out of the editor', () => {

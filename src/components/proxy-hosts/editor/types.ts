@@ -22,7 +22,7 @@ export type EditorCertificate = {
   provider: string | null;
 };
 
-/** The certificate Caddy serves for the host's domains today, when Caddy manages it. */
+/** The certificate Caddy serves today for the host's saved choice: automatic, or a managed entry. */
 export type ServedCertificate = {
   domains: string[];
   issuer: string | null;
