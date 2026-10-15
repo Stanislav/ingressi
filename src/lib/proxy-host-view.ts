@@ -174,11 +174,13 @@ export function certificateTone(certificate: HostCertificate): CertificateTone {
   switch (certificate.renewal) {
     case "expired":
     case "overdue":
+    case "missing":
       return "bad";
     case "due":
     case "replace_soon":
       return "warn";
     case "inactive":
+    case "pending":
     case "unknown":
       return "off";
     default:
@@ -193,6 +195,8 @@ export const RENEWAL_LABELS: Record<RenewalState, string> = {
   expired: "expired",
   manual: "replaced by hand",
   replace_soon: "replace soon",
+  pending: "obtaining",
+  missing: "not issued",
   unknown: "not read yet",
   inactive: "host disabled",
 };
@@ -260,6 +264,7 @@ export function attentionLabel(item: HostAttention, time: TimeFormatter): string
     case "certificate":
       if (item.state === "expired") return "Certificate expired";
       if (item.state === "overdue") return "Certificate renewal failing";
+      if (item.state === "missing") return "No certificate issued";
       return item.daysLeft !== null ? `Certificate expires in ${item.daysLeft} ${item.daysLeft === 1 ? "day" : "days"}` : "Certificate expires soon";
   }
 }
@@ -270,11 +275,11 @@ export function sortAttention(items: HostAttention[]): HostAttention[] {
   return [...items].sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
 }
 
-/** The certificate states that need someone to act (Caddy renewing on schedule does not). */
+/** The certificate states that need someone to act (Caddy renewing on schedule, or getting a new host's first certificate, does not). */
 export function certificateAttention(certificate: HostCertificate): HostAttention | null {
   if (!certificate.visible) return null;
   const { renewal, daysLeft } = certificate;
-  if (renewal === "expired" || renewal === "overdue") return { kind: "certificate", tone: "bad", state: renewal, daysLeft };
+  if (renewal === "expired" || renewal === "overdue" || renewal === "missing") return { kind: "certificate", tone: "bad", state: renewal, daysLeft };
   if (renewal === "replace_soon") return { kind: "certificate", tone: daysLeft !== null && daysLeft < 7 ? "bad" : "warn", state: renewal, daysLeft };
   return null;
 }

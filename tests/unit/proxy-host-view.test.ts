@@ -112,6 +112,21 @@ describe('certificates', () => {
     expect(certificateTone(cert({ renewal: 'overdue', daysLeft: 5 }))).toBe('bad');
     expect(certificateTone(cert({ renewal: 'expired', daysLeft: -1 }))).toBe('bad');
     expect(certificateTone(cert({ renewal: 'inactive', daysLeft: null }))).toBe('off');
+    expect(certificateTone(cert({ renewal: 'unknown', daysLeft: null }))).toBe('off');
+    expect(certificateTone(cert({ renewal: 'pending', daysLeft: null }))).toBe('off');
+    expect(certificateTone(cert({ renewal: 'missing', daysLeft: null }))).toBe('bad');
+  });
+
+  it('flags a certificate Caddy still has not issued, but not one being obtained or not read yet', () => {
+    expect(certificateAttention(cert({ renewal: 'missing', daysLeft: null, validTo: null, issuer: null }))).toEqual({
+      kind: 'certificate',
+      tone: 'bad',
+      state: 'missing',
+      daysLeft: null,
+    });
+    expect(certificateAttention(cert({ renewal: 'pending', daysLeft: null, validTo: null }))).toBeNull();
+    expect(certificateAttention(cert({ renewal: 'unknown', daysLeft: null, validTo: null }))).toBeNull();
+    expect(attentionLabel({ kind: 'certificate', tone: 'bad', state: 'missing', daysLeft: null }, () => '')).toBe('No certificate issued');
   });
 
   it('needs attention only when someone has to act', () => {

@@ -10,7 +10,7 @@ One row per certificate:
 
 - **ACME certificates.** Caddy gets and renews a certificate on its own for every proxy host without a chosen certificate. A host whose names an imported certificate covers is listed under that certificate instead, and a host covered by a wildcard host (`sub.example.com` under `*.example.com`) under the wildcard.
 - **Imported certificates**, uploaded as PEM. They are replaced by hand.
-- **Managed entries** left from earlier versions, marked **Older entry**. Caddy obtains these certificates on its own as well; the entries can be deleted from their row menu.
+- **Managed certificates**: a certificate Caddy obtains for the names you list, optionally with its own DNS provider (see [Choosing a DNS provider](#choosing-a-dns-provider)). Create one with **New managed certificate**, change it from its row menu, and choose it on a proxy host.
 
 Each row shows the issuer and key, how the certificate is obtained (HTTP-01, which needs port 80, or TLS-ALPN on 443, reachable from the internet; or DNS-01 with the DNS provider set under Certificate settings → DNS-01 providers, named under the method; a custom ACME directory under Certificate settings → Certificate authority is named as the issuer until a certificate has been read), when it expires, where its renewal stands and which proxy hosts and L4 hosts use it. An L4 host uses a certificate when it terminates TLS for a server name (TLS SNI matcher) the certificate covers.
 
@@ -21,10 +21,13 @@ Renewal states:
 - **Overdue**: past the middle of the window and still not renewed. Check Caddy's log (challenge errors, DNS provider credentials, port 80 reachable from the internet).
 - **Manual** and **Replace soon**: imported certificates, the latter with 30 days or less left.
 - **Not managed**: the host is disabled, or no enabled host uses the entry; Caddy manages nothing for it.
+- **Obtaining**: Caddy has no certificate for the name yet and the host (or the managed certificate) was saved less than 15 minutes ago. DNS challenges wait for propagation, so the first certificate can take a few minutes.
+- **Not issued**: Caddy still has none 15 minutes after the host or certificate was last saved, so obtaining the first one is failing and HTTPS does not work. The row says when Caddy was last asked, the proxy hosts list shows **No certificate issued** instead of **No issues**, and the host's page says what to check: Caddy's log for the challenge error, that the DNS provider can edit the domain's zone (DNS-01), that the domain points at this server and that ports 80 and 443 are reachable. The reason itself is in Caddy's log: the dashboard only sees that no certificate is served.
+- **Automatic** with an empty expiry (**Not read yet**): the dashboard could not ask Caddy (not reachable, or the check has not finished), which says nothing about the certificate.
 
 Deleting an imported certificate or a managed entry moves the proxy hosts that use it to automatic TLS: Caddy obtains a certificate for their names. A certificate that a host with a wildcard name uses cannot be deleted while no default DNS provider is set, since Caddy could not obtain the wildcard on its own; set one, or give the host another certificate first.
 
-Above the table, the expiry timeline shows the next 90 days with the 30-day renewal band. Certificates expiring later, and those whose expiry is not read yet, are not on it (the table lists them). Selecting a marker clears the filters, turns to the row's page and highlights it. Search matches domains, names, issuers and the hosts using a certificate; the status filter shows the certificates due for renewal (including expired ones and imported ones to replace) or the healthy ones.
+Above the table, the expiry timeline shows the next 90 days with the 30-day renewal band. Certificates expiring later, and those whose expiry is not read yet, are not on it (the table lists them). Selecting a marker clears the filters, turns to the row's page and highlights it. Search matches domains, names, issuers and the hosts using a certificate; the status filter shows the certificates that need attention (due for renewal, expired, imported ones to replace, and those never issued) or the healthy ones.
 
 ### Where the expiry comes from
 
@@ -32,7 +35,7 @@ Imported certificates are read from their PEM. For the certificates Caddy obtain
 
 - The certificate is only read: its chain is not verified (a staging or internal CA is still shown), it must name the domain, and nothing is sent after the handshake. A wildcard domain is read as `tls-check.<domain>`; IP addresses are skipped.
 - The same reading serves this page, the certificate alerts ([alerting](../ee/docs/alerting.md#certificates-caddy-manages)), the overview's **Needs attention** list, the setup checklist and compliance checks. At most six handshakes run at a time, each with a five-second timeout, and one per name: callers asking for a name being read share its handshake.
-- Results are kept for 30 minutes when the certificate is valid, five minutes otherwise (none found, about to expire, not naming the domain, Caddy not reachable). The page waits at most three seconds for handshakes; a certificate not read yet shows **Not read yet** and appears on the next visit.
+- Results are kept for 30 minutes when the certificate is valid, five minutes otherwise (none found, about to expire, not naming the domain, Caddy not reachable). The page waits at most three seconds for handshakes; a certificate not read yet shows **Not read yet** and appears on the next visit. Caddy answering without a certificate for the name is told apart from a handshake that failed: only the first counts as **Obtaining** or **Not issued**.
 - Address: the host of `CADDY_API_URL` on port 443 (in Docker Compose, `caddy:443`). Set `CADDY_TLS_ADDRESS` (`host:port`, for example `caddy:443`, or `[::1]:8443`) on the web container when Caddy's HTTPS listener is somewhere else; `CADDY_TLS_ADDRESS=off` turns the reading off (the page then shows no expiry for these certificates, and certificate alerts about them stay as they are). In a fleet, each node reads its own Caddy.
 
 ## Certificate authorities
@@ -60,7 +63,16 @@ Roles limited to tags see only the **Certificates** tab: certificate authorities
 
 Caddy automatically obtains Let's Encrypt certificates for all proxy hosts.
 
-**DNS-01 Challenge** (optional): Configure a DNS provider in **Certificates → Certificate settings** (DNS-01 providers) for wildcard certificates and environments where ports 80/443 are not public. Supported providers: Cloudflare, Route 53, DigitalOcean, Duck DNS, Hetzner, Vultr, Porkbun, GoDaddy, Namecheap, OVH, IONOS, Linode, Njalla, netcup, Spaceship, deSEC, Bunny, Dynu, acme-dns, Infomaniak, INWX, ClouDNS, and RFC2136 (BIND/TSIG). Credentials are encrypted at rest with AES-256-GCM. You can override the DNS provider per certificate. The DNS propagation delay and timeout can be set per provider (netcup ships with slow-propagation defaults).
+**DNS-01 Challenge** (optional): Configure a DNS provider in **Certificates → Certificate settings** (DNS-01 providers) for wildcard certificates and environments where ports 80/443 are not public. Supported providers: Cloudflare, Route 53, DigitalOcean, Duck DNS, Hetzner, Vultr, Porkbun, GoDaddy, Namecheap, OVH, IONOS, Linode, Njalla, netcup, Spaceship, deSEC, Bunny, Dynu, acme-dns, Infomaniak, INWX, ClouDNS, and RFC2136 (BIND/TSIG). Credentials are encrypted at rest with AES-256-GCM. You can choose a different DNS provider for a single certificate (see below). The DNS propagation delay and timeout can be set per provider (netcup ships with slow-propagation defaults); a certificate uses the delay and timeout of the provider it is set to.
+
+### Choosing a DNS provider
+
+With a default DNS provider set, every certificate Caddy obtains uses it. When a domain's DNS is hosted elsewhere (the default is Cloudflare and one domain's zone is at GoDaddy), set up the second provider under Certificate settings, then give that domain its own managed certificate:
+
+- On the **Certificates** page, **New managed certificate** asks for a name, the domains and the **DNS provider**: **Default (Cloudflare)** or any provider set up under Certificate settings. A line under it says what the certificate uses, for example *DNS-01 with GoDaddy*. The default provider and the other hosts are not touched. **Edit** in the row menu changes the name, domains and provider; choosing the default again clears the override.
+- In a proxy host's **Certificate** section, **Obtained with** names the challenge and provider the host gets (for automatic TLS: the default provider, or HTTP-01 without one). **Use a different DNS provider** (shown when another provider is set up and you may create certificates) opens the same sheet with the host's domains filled in; saving creates the certificate and chooses it on the host. **Edit certificate** does the same for the managed certificate the host uses.
+
+The certificate is renewed with the same provider. Without any DNS provider set up the choice is not offered and certificates use HTTP-01.
 
 **Custom Certificates** (optional): Import your own certificates via the Certificates page. Private keys are encrypted at rest with AES-256-GCM, migrated from legacy plaintext storage on startup, and treated as write-only by ordinary API responses and browser payloads.
 

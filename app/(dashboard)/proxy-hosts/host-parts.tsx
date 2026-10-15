@@ -86,6 +86,8 @@ export function CertificateSummary({ certificate }: { certificate: HostCertifica
   if (certificate.renewal === "expired") headline = "Expired";
   else if (certificate.daysLeft !== null) headline = `${certificate.daysLeft} ${certificate.daysLeft === 1 ? "day" : "days"}`;
   else if (certificate.renewal === "inactive") headline = "Host disabled";
+  else if (certificate.renewal === "missing") headline = "Not issued";
+  else if (certificate.renewal === "pending") headline = "Obtaining";
   else headline = "Not read yet";
   const issuer = certificate.issuer ?? (certificate.kind === "imported" ? "Imported" : "ACME");
   const parts = [issuer];

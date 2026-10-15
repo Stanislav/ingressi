@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { FieldErrors } from "./validate";
-import type { HostEditorData } from "./types";
+import type { EditorCertificate, HostEditorData } from "./types";
 import type { HostForm } from "./model";
 import type { ChangeLookup } from "./changes";
 
@@ -22,6 +22,8 @@ export type EditorContextValue = {
   lookup: ChangeLookup;
   /** Replaces the form (every edit goes through it). */
   update: (recipe: (form: HostForm) => HostForm) => void;
+  /** Adds a certificate saved from the certificate section to the picker (or replaces its entry), and chooses it when `choose`. */
+  certificateSaved: (certificate: EditorCertificate, choose: boolean) => void;
   /** Errors to show now (fields the user left, or all of them after a save attempt). */
   errors: FieldErrors;
   /** Marks a field as visited, so its error shows. */

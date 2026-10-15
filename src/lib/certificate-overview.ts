@@ -11,7 +11,7 @@
  * L4 hosts are named only to callers that may read them.
  */
 import { X509Certificate } from "node:crypto";
-import { appDb } from "./db";
+import { appDb, toIso } from "./db";
 import { certificates, proxyHosts } from "./db/schema";
 import { can, scopeTagsFor, tagsInScope, type Access } from "./permissions";
 import { parseStoredTags } from "./host-tags";
@@ -20,7 +20,7 @@ import { parseStoredCertificateProviderOptions } from "./certificate-provider-op
 import { getProviderDefinition } from "./dns-providers";
 import { getAcmeSettings, getDnsProviderSettings } from "./settings";
 import { listL4ProxyHosts } from "./models/l4-proxy-hosts";
-import { certificateKeyType, getManagedCertificateExpiry, type ManagedCertificateExpiry } from "./managed-certificates";
+import { certificateKeyType, getManagedCertificateReadings, type ManagedCertificateExpiry, type ManagedCertificateReading } from "./managed-certificates";
 import {
   certificateRenewal,
   daysUntil,
@@ -34,7 +34,7 @@ export * from "./certificate-renewal";
 
 export type CertificateOverviewOptions = {
   now?: number;
-  /** Passed to getManagedCertificateExpiry. */
+  /** Passed to getManagedCertificateReadings. */
   waitMs?: number;
 };
 
@@ -89,14 +89,39 @@ function providerDisplayName(name: string | null | undefined): string | null {
   return getProviderDefinition(name)?.displayName ?? name;
 }
 
-/** The earliest-expiring certificate Caddy serves for any of `domains`. */
-function earliestServed(domains: string[], served: Map<string, ManagedCertificateExpiry>): ManagedCertificateExpiry | null {
-  let earliest: ManagedCertificateExpiry | null = null;
+/** What Caddy showed for a row's names: the soonest-expiring certificate it serves, else "none" when it answered without one. */
+type RowReading = {
+  served: ManagedCertificateExpiry | null;
+  /** Caddy answered a handshake for one of the names without a certificate for it. */
+  none: boolean;
+  /** When Caddy was last asked (the served certificate's reading, else the latest of the others). */
+  checkedAt: string | null;
+};
+
+function readNames(domains: string[], readings: Map<string, ManagedCertificateReading>): RowReading {
+  let served: ManagedCertificateExpiry | null = null;
+  let none = false;
+  let checkedAt: string | null = null;
   for (const domain of domains) {
-    const found = served.get(domain);
-    if (found && (!earliest || found.validTo < earliest.validTo)) earliest = found;
+    const reading = readings.get(domain);
+    if (!reading) continue;
+    if (reading.kind === "served") {
+      if (!served || reading.expiry.validTo < served.validTo) served = reading.expiry;
+    } else if (reading.kind === "none") {
+      none = true;
+    }
+    const at = reading.kind === "served" ? reading.expiry.checkedAt : reading.checkedAt;
+    if (!checkedAt || at > checkedAt) checkedAt = at;
   }
-  return earliest;
+  return { served, none, checkedAt: served?.checkedAt ?? checkedAt };
+}
+
+function latest(...times: (string | null | undefined)[]): string | null {
+  let result: string | null = null;
+  for (const time of times) {
+    if (time && !Number.isNaN(Date.parse(time)) && (!result || Date.parse(time) > Date.parse(result))) result = time;
+  }
+  return result;
 }
 
 type HostRow = {
@@ -106,6 +131,7 @@ type HostRow = {
   enabled: boolean;
   certificateId: number | null;
   tags: string[];
+  updatedAt: string | null;
 };
 
 /** The certificate overview `access` may see. */
@@ -125,6 +151,7 @@ export async function buildCertificateOverview(access: Access, options: Certific
         enabled: proxyHosts.enabled,
         certificateId: proxyHosts.certificateId,
         tags: proxyHosts.tags,
+        updatedAt: proxyHosts.updatedAt,
       })
       .from(proxyHosts)
       .orderBy(proxyHosts.name, proxyHosts.id),
@@ -141,6 +168,7 @@ export async function buildCertificateOverview(access: Access, options: Certific
       enabled: row.enabled,
       certificateId: row.certificateId ?? null,
       tags: parseStoredTags(row.tags),
+      updatedAt: toIso(row.updatedAt),
     }))
     .filter((host) => !scope || inScope(host.tags));
 
@@ -225,7 +253,7 @@ export async function buildCertificateOverview(access: Access, options: Certific
   const inUse = (certId: number) => (usage.get(certId) ?? []).some((u) => u.kind === "proxy_host" && enabledHostIds.has(u.id));
   for (const host of listedAcmeHosts) if (host.enabled) host.domains.forEach((d) => toProbe.add(d));
   for (const cert of managedCerts) if (inUse(cert.id)) certInfo.get(cert.id)?.domains.forEach((d) => toProbe.add(d));
-  const served = toProbe.size > 0 ? await getManagedCertificateExpiry([...toProbe], { waitMs: options.waitMs }) : new Map();
+  const readings = toProbe.size > 0 ? await getManagedCertificateReadings([...toProbe], { waitMs: options.waitMs }) : new Map<string, ManagedCertificateReading>();
 
   const l4UsersFor = (domains: string[]): CertificateUser[] =>
     l4Hosts
@@ -236,7 +264,8 @@ export async function buildCertificateOverview(access: Access, options: Certific
   const fallbackIssuer = directory ?? "Let's Encrypt";
 
   for (const host of listedAcmeHosts) {
-    const cert = host.enabled ? earliestServed(host.domains, served) : null;
+    const reading = host.enabled ? readNames(host.domains, readings) : null;
+    const cert = reading?.served ?? null;
     const coveredHosts = acmeHosts.filter(
       (other) => other.id !== host.id && !listedAcmeHosts.includes(other) && other.domains.every((d) => isDomainCoveredByCert(d, host.domains))
     );
@@ -254,6 +283,8 @@ export async function buildCertificateOverview(access: Access, options: Certific
       validFrom: cert?.validFrom ?? null,
       validTo: cert?.validTo ?? null,
       expirySource: cert ? ("caddy" as const) : null,
+      checkedAt: reading?.checkedAt ?? null,
+      noCertificate: reading?.none && !cert ? { savedAt: host.updatedAt } : undefined,
       obtainedBy: acmeObtainedBy(null),
       usedBy: [
         { kind: "proxy_host" as const, id: host.id, name: host.name, domains: host.domains },
@@ -285,6 +316,7 @@ export async function buildCertificateOverview(access: Access, options: Certific
             validFrom: info.pem?.validFrom ?? null,
             validTo: info.pem?.validTo ?? null,
             expirySource: info.pem ? "pem" : null,
+            checkedAt: null,
             obtainedBy: { method: "imported" },
             usedBy: [...proxyUsers, ...l4UsersFor(info.domains)],
           },
@@ -294,7 +326,8 @@ export async function buildCertificateOverview(access: Access, options: Certific
       continue;
     }
     const active = inUse(cert.id);
-    const servedCert = active ? earliestServed(info.domains, served) : null;
+    const reading = active ? readNames(info.domains, readings) : null;
+    const servedCert = reading?.served ?? null;
     const provider = parseStoredCertificateProviderOptions(cert.providerOptions)?.provider ?? null;
     rows.push(
       finishRow(
@@ -312,6 +345,11 @@ export async function buildCertificateOverview(access: Access, options: Certific
           validFrom: servedCert?.validFrom ?? null,
           validTo: servedCert?.validTo ?? null,
           expirySource: servedCert ? "caddy" : null,
+          checkedAt: reading?.checkedAt ?? null,
+          noCertificate:
+            reading?.none && !servedCert
+              ? { savedAt: latest(toIso(cert.updatedAt), ...proxyUsers.map((user) => hosts.find((host) => host.id === user.id)?.updatedAt)) }
+              : undefined,
           obtainedBy: acmeObtainedBy(provider),
           usedBy: [...proxyUsers, ...l4UsersFor(info.domains)],
         },
@@ -324,11 +362,14 @@ export async function buildCertificateOverview(access: Access, options: Certific
   return { generatedAt: new Date(now).toISOString(), certificates: rows };
 }
 
-function finishRow(row: Omit<CertificateOverviewRow, "daysLeft" | "renewal">, now: number): CertificateOverviewRow {
+function finishRow(
+  { noCertificate, ...row }: Omit<CertificateOverviewRow, "daysLeft" | "renewal"> & { noCertificate?: { savedAt: string | null } },
+  now: number
+): CertificateOverviewRow {
   return {
     ...row,
     daysLeft: row.validTo ? daysUntil(row.validTo, now) : null,
-    renewal: certificateRenewal(row, now),
+    renewal: certificateRenewal({ ...row, noCertificate }, now),
   };
 }
 

@@ -11,6 +11,9 @@ import type { TestDb } from '../helpers/db';
 const ctx = vi.hoisted(() => ({
   db: null as unknown as TestDb,
   served: new Map<string, { validFrom: string; validTo: string; issuer: string | null; keyType: string | null }>(),
+  /** Names Caddy answered without a certificate, and names whose handshake did not work. */
+  none: new Set<string>(),
+  unavailable: new Set<string>(),
   asked: [] as string[][],
   dnsProvider: null as null | { providers: Record<string, Record<string, string>>; default: string | null },
   acme: null as null | { caUrl?: string },
@@ -25,12 +28,15 @@ vi.mock('../../src/lib/db', async () => {
 });
 vi.mock('../../src/lib/managed-certificates', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/lib/managed-certificates')>()),
-  getManagedCertificateExpiry: vi.fn(async (domains: string[]) => {
+  getManagedCertificateReadings: vi.fn(async (domains: string[]) => {
     ctx.asked.push([...domains]);
+    const checkedAt = '2026-10-03T11:59:00.000Z';
     const result = new Map();
     for (const domain of domains) {
       const cert = ctx.served.get(domain);
-      if (cert) result.set(domain, { domain, checkedAt: new Date().toISOString(), ...cert });
+      if (cert) result.set(domain, { kind: 'served', expiry: { domain, checkedAt, ...cert } });
+      else if (ctx.none.has(domain)) result.set(domain, { kind: 'none', checkedAt });
+      else if (ctx.unavailable.has(domain)) result.set(domain, { kind: 'unavailable', checkedAt });
     }
     return result;
   }),
@@ -52,6 +58,7 @@ import * as schema from '../../src/lib/db/schema';
 import { adminAccess, type Access, type Permission } from '../../src/lib/permissions';
 import { buildCertificateOverview, certificateRenewal, daysUntil } from '../../src/lib/certificate-overview';
 import { createSelfSignedServerCertificate } from '../helpers/certs';
+import { eq } from 'drizzle-orm';
 import { GET as getOverview } from '../../app/api/v1/certificates/overview/route';
 import { NextRequest } from 'next/server';
 
@@ -74,7 +81,7 @@ function role(permissions: Permission[], scopeTags: string[] = []): Access {
 async function addHost(
   name: string,
   domains: string[],
-  options: { enabled?: boolean; certificateId?: number | null; tags?: string[] } = {}
+  options: { enabled?: boolean; certificateId?: number | null; tags?: string[]; updatedAt?: string } = {}
 ) {
   const [row] = await ctx.db
     .insert(schema.proxyHosts)
@@ -86,7 +93,7 @@ async function addHost(
       enabled: options.enabled ?? true,
       tags: JSON.stringify(options.tags ?? []),
       createdAt: stamp(),
-      updatedAt: stamp(),
+      updatedAt: options.updatedAt ?? stamp(),
     })
     .returning();
   return row.id;
@@ -125,6 +132,8 @@ beforeAll(() => {
 beforeEach(async () => {
   for (const table of [schema.l4ProxyHosts, schema.proxyHosts, schema.certificates]) await ctx.db.delete(table);
   ctx.served.clear();
+  ctx.none.clear();
+  ctx.unavailable.clear();
   ctx.asked = [];
   ctx.dnsProvider = null;
   ctx.acme = null;
@@ -160,6 +169,17 @@ describe('certificateRenewal', () => {
     expect(certificateRenewal({ kind: 'acme', active: false, validFrom: iso(-1), validTo: iso(80) }, NOW).state).toBe('inactive');
   });
 
+  it('is pending for a new host without a certificate, missing once it has had a while, unknown when nothing was learned', () => {
+    const none = (savedAt: string | null) =>
+      certificateRenewal({ kind: 'acme', active: true, validFrom: null, validTo: null, noCertificate: { savedAt } }, NOW);
+    expect(none(iso(-1 / 24 / 60))).toEqual({ state: 'pending', renewFrom: null });
+    expect(none(iso(-14 / 24 / 60)).state).toBe('pending');
+    expect(none(iso(-16 / 24 / 60)).state).toBe('missing');
+    expect(none(iso(-30)).state).toBe('missing');
+    expect(none(null).state).toBe('missing');
+    expect(certificateRenewal({ kind: 'acme', active: false, validFrom: null, validTo: null, noCertificate: { savedAt: iso(-30) } }, NOW).state).toBe('inactive');
+  });
+
   it('counts whole days left', () => {
     expect(daysUntil(iso(31.5), NOW)).toBe(31);
     expect(daysUntil(iso(-0.5), NOW)).toBe(-1);
@@ -192,6 +212,49 @@ describe('buildCertificateOverview', () => {
     // L4 hosts that terminate TLS for the name use it; passthrough hosts do not.
     expect(row.usedBy.map((u) => `${u.kind}:${u.name}`)).toEqual(['proxy_host:Auth', 'l4_host:MQTT']);
     expect(ctx.asked.flat().sort()).toEqual(['auth.example.com', 'www.auth.example.com']);
+  });
+
+  it('tells a host still getting its first certificate from one that never got it', async () => {
+    const fresh = await addHost('Fresh', ['fresh.example.com']);
+    const stuck = await addHost('Stuck', ['stuck.example.com'], { updatedAt: iso(-1) });
+    const unreadable = await addHost('Unreadable', ['unreadable.example.com'], { updatedAt: iso(-1) });
+    const unasked = await addHost('Unasked', ['unasked.example.com'], { updatedAt: iso(-1) });
+    ctx.none.add('fresh.example.com');
+    ctx.none.add('stuck.example.com');
+    ctx.unavailable.add('unreadable.example.com');
+
+    const { certificates } = await buildCertificateOverview(adminAccess(1), { now: NOW });
+    const byHost = (id: number) => certificates.find((row) => row.id === `acme:${id}`)!;
+
+    expect(byHost(fresh).renewal.state).toBe('pending');
+    expect(byHost(stuck)).toMatchObject({ validTo: null, daysLeft: null, checkedAt: '2026-10-03T11:59:00.000Z', renewal: { state: 'missing' } });
+    // Caddy could not be asked, or has not been yet: nothing is known about the certificate.
+    expect(byHost(unreadable)).toMatchObject({ checkedAt: '2026-10-03T11:59:00.000Z', renewal: { state: 'unknown' } });
+    expect(byHost(unasked)).toMatchObject({ checkedAt: null, renewal: { state: 'unknown' } });
+  });
+
+  it('counts a managed entry as missing from the last time it or a host using it was saved', async () => {
+    const [entry] = await ctx.db
+      .insert(schema.certificates)
+      .values({ name: 'Shop', type: 'managed', domainNames: '["shop.example.com"]', autoRenew: true, createdAt: iso(-2), updatedAt: iso(-2) })
+      .returning();
+    const hostId = await addHost('Shop', ['shop.example.com'], { certificateId: entry.id, updatedAt: iso(-1 / 24 / 60) });
+    ctx.none.add('shop.example.com');
+
+    let row = (await buildCertificateOverview(adminAccess(1), { now: NOW })).certificates.find((r) => r.certificateId === entry.id)!;
+    expect(row.renewal.state).toBe('pending');
+
+    await ctx.db.update(schema.proxyHosts).set({ updatedAt: iso(-1) }).where(eq(schema.proxyHosts.id, hostId));
+    row = (await buildCertificateOverview(adminAccess(1), { now: NOW })).certificates.find((r) => r.certificateId === entry.id)!;
+    expect(row).toMatchObject({ kind: 'managed', renewal: { state: 'missing' } });
+  });
+
+  it('serves the certificate when another name of the host has one, whatever the rest answered', async () => {
+    const id = await addHost('Two', ['one.example.com', 'two.example.com'], { updatedAt: iso(-1) });
+    ctx.served.set('one.example.com', { validFrom: iso(-10), validTo: iso(80), issuer: "Let's Encrypt", keyType: 'ECDSA P-256' });
+    ctx.none.add('two.example.com');
+    const { certificates } = await buildCertificateOverview(adminAccess(1), { now: NOW });
+    expect(certificates.find((row) => row.id === `acme:${id}`)!.renewal.state).toBe('scheduled');
   });
 
   it('says DNS-01 with the default provider and names a custom ACME directory', async () => {

@@ -37,7 +37,7 @@ import { RoutingSection } from "./RoutingSection";
 import { SecuritySection } from "./SecuritySection";
 import { AccessSection } from "./AccessSection";
 import { AdvancedSection, CertificateSection, HeadersSection } from "./OtherSections";
-import type { HostEditorData } from "./types";
+import type { EditorCertificate, HostEditorData } from "./types";
 
 /** Cards that can be linked to directly (#waf), and the section they are in. */
 const CARD_SECTIONS: Record<string, SectionId> = {
@@ -144,8 +144,23 @@ function initialForm(data: HostEditorData): HostForm {
 
 const noSubscription = () => () => {};
 
-export function HostEditor({ data, workspace }: { data: HostEditorData; workspace?: HostWorkspace }) {
+export function HostEditor({ data: pageData, workspace }: { data: HostEditorData; workspace?: HostWorkspace }) {
   const router = useRouter();
+  // Certificates created or changed from the certificate section, which the page's list does not have yet.
+  const [certificateEdits, setCertificateEdits] = useState<EditorCertificate[]>([]);
+  const data = useMemo<HostEditorData>(
+    () =>
+      certificateEdits.length === 0
+        ? pageData
+        : {
+            ...pageData,
+            certificates: [
+              ...pageData.certificates.map((certificate) => certificateEdits.find((edit) => edit.id === certificate.id) ?? certificate),
+              ...certificateEdits.filter((edit) => !pageData.certificates.some((certificate) => certificate.id === edit.id)),
+            ],
+          },
+    [pageData, certificateEdits]
+  );
   // False in the server render and during hydration, true once React owns
   // the fields: text typed into them before that is reset by hydration.
   const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
@@ -221,6 +236,13 @@ export function HostEditor({ data, workspace }: { data: HostEditorData; workspac
     setServerErrors({});
   }, []);
 
+  const certificateSaved = useCallback(
+    (certificate: EditorCertificate, choose: boolean) => {
+      setCertificateEdits((edits) => [...edits.filter((edit) => edit.id !== certificate.id), certificate]);
+      if (choose) update((current) => ({ ...current, certificateId: certificate.id }));
+    },
+    [update]
+  );
   const touch = useCallback((id: string) => {
     setTouched((current) => (current.has(id) ? current : new Set([...current, id])));
   }, []);
@@ -415,7 +437,7 @@ export function HostEditor({ data, workspace }: { data: HostEditorData; workspac
     setAnnouncement(result.message);
   }
 
-  const context: EditorContextValue = { form, saved, data, lookup, update, errors: visibleErrors, touch, wasOf };
+  const context: EditorContextValue = { form, saved, data, lookup, update, certificateSaved, errors: visibleErrors, touch, wasOf };
   const hostName = data.host?.name ?? (form.name.trim() || "the new host");
   const perSection = new Map<SectionId, number>();
   for (const change of changes) perSection.set(change.group.section, (perSection.get(change.group.section) ?? 0) + 1);

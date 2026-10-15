@@ -8,11 +8,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IssueClientCertDialog } from "@/components/ca-certificates/CaCertDialogs";
 import type { CertificateOverview } from "@/src/lib/certificate-renewal";
+import type { DnsProviderChoices } from "@/src/lib/dns-provider-choice";
+import { ManagedCertificateSheet } from "@/components/certificates/ManagedCertificateSheet";
 import type {
   CaCertificateView,
   CertificatesTab as TabId,
   ImportedCertView,
   IssuedClientCertificateView,
+  ManagedCertificateView,
   MtlsRoleView,
 } from "./page";
 import { NO_CLIENT_CERT_FILTERS, type ClientCertFilters } from "./client-list";
@@ -27,6 +30,10 @@ type Props = {
   caCertificates: CaCertificateView[];
   clientCertificates: IssuedClientCertificateView[];
   mtlsRoles: MtlsRoleView[];
+  /** The certificates Caddy obtains that the list shows, with the DNS provider each one is set to. */
+  managedCertificates: ManagedCertificateView[];
+  /** The DNS providers set up under Certificate settings. */
+  dnsChoices: DnsProviderChoices;
   /** CA certificates, client certificates and roles: hidden under a tag scope. */
   showTrustAnchors: boolean;
   canWrite: boolean;
@@ -48,6 +55,8 @@ export default function CertificatesClient({
   caCertificates,
   clientCertificates,
   mtlsRoles,
+  managedCertificates,
+  dnsChoices,
   showTrustAnchors,
   canWrite,
   canCreateCertificate,
@@ -57,6 +66,8 @@ export default function CertificatesClient({
   const [tab, setTab] = useState<TabId>(initialTab);
   // false: closed; null: importing a new one; a certificate: editing it.
   const [importDrawer, setImportDrawer] = useState<ImportedCertView | null | false>(false);
+  // The same: a new certificate Caddy obtains, or the one being edited.
+  const [managedSheet, setManagedSheet] = useState<ManagedCertificateView | null | false>(false);
   const [caDrawer, setCaDrawer] = useState<CaCertificateView | null | false>(false);
   const [issueFor, setIssueFor] = useState<CaCertificateView | null>(null);
   // Kept here so a certificate authority's "Show client certificates" can set them.
@@ -65,10 +76,16 @@ export default function CertificatesClient({
   const primary =
     tab === "certificates" ? (
       canCreateCertificate && (
-        <Button onClick={() => setImportDrawer(null)}>
-          <Plus />
-          Import certificate
-        </Button>
+        <>
+          <Button variant="outline" onClick={() => setImportDrawer(null)}>
+            <Plus />
+            Import certificate
+          </Button>
+          <Button onClick={() => setManagedSheet(null)}>
+            <Plus />
+            New managed certificate
+          </Button>
+        </>
       )
     ) : tab === "authorities" ? (
       canWrite && (
@@ -109,7 +126,9 @@ export default function CertificatesClient({
       rows={overview.certificates}
       generatedAt={overview.generatedAt}
       canWrite={canWrite}
+      managedCertificates={managedCertificates}
       onEditImported={(cert) => setImportDrawer(cert)}
+      onEditManaged={(cert) => setManagedSheet(cert)}
     />
   );
 
@@ -168,6 +187,9 @@ export default function CertificatesClient({
       )}
 
       <ImportCertDrawer open={importDrawer !== false} cert={importDrawer || null} onClose={() => setImportDrawer(false)} />
+      {managedSheet !== false && (
+        <ManagedCertificateSheet open cert={managedSheet} choices={dnsChoices} onClose={() => setManagedSheet(false)} />
+      )}
       {showTrustAnchors && (
         <CaCertDrawer open={caDrawer !== false} cert={caDrawer || null} onClose={() => setCaDrawer(false)} />
       )}

@@ -12,40 +12,13 @@
  *   API → database → applyCaddyConfig → Caddy admin API.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
+import { liveProviderFor } from '../../helpers/live-caddy';
 
 const BASE_URL = 'http://localhost:3000';
 const API = `${BASE_URL}/api/v1`;
-const CADDY = 'ingressi-caddy';
 const HEADERS = { 'Content-Type': 'application/json', Origin: BASE_URL };
 // The Cloudflare module checks the token's shape when Caddy provisions it (40 URL-safe characters).
 const FAKE_CLOUDFLARE_TOKEN = `e2e${'0'.repeat(37)}`;
-
-type Policy = {
-  subjects?: string[];
-  issuers?: { challenges?: { dns?: { provider?: { name?: string } } } }[];
-};
-
-/** Caddy's live TLS automation policies, read from inside the caddy container; null if unreachable. */
-function fetchLivePolicies(): Policy[] | null {
-  try {
-    const out = execFileSync(
-      'docker',
-      ['exec', CADDY, 'wget', '-qO-', 'http://localhost:2019/config/apps/tls/automation/policies'],
-      { encoding: 'utf-8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] },
-    );
-    return JSON.parse(out) as Policy[] | null;
-  } catch {
-    return null;
-  }
-}
-
-/** The DNS provider name Caddy uses for `domain`, or null when no policy lists it. */
-function liveProviderFor(domain: string): string | null {
-  const policy = fetchLivePolicies()?.find((p) => p.subjects?.includes(domain));
-  if (!policy) return null;
-  return policy.issuers?.[0]?.challenges?.dns?.provider?.name ?? null;
-}
 
 async function createManagedCertWithHost(
   page: Page,

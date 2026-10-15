@@ -6,7 +6,7 @@
 
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 
-const RENEWAL_STATES = ["scheduled", "due", "overdue", "expired", "manual", "replace_soon", "unknown", "inactive"] as const;
+const RENEWAL_STATES = ["scheduled", "due", "overdue", "expired", "manual", "replace_soon", "pending", "missing", "unknown", "inactive"] as const;
 
 export const CERTIFICATE_OVERVIEW_OPENAPI_PATHS = {
   "/api/v1/certificates/overview": {
@@ -65,6 +65,12 @@ export const CERTIFICATE_OVERVIEW_OPENAPI_SCHEMAS = {
       validTo: { type: "string", format: "date-time", nullable: true },
       expirySource: { type: "string", enum: ["pem", "caddy"], nullable: true },
       daysLeft: { type: "integer", nullable: true, description: "Whole days left; negative once expired" },
+      checkedAt: {
+        type: "string",
+        format: "date-time",
+        nullable: true,
+        description: "When Caddy was last asked for the certificate over TLS; null for imported certificates and before the first check",
+      },
       obtainedBy: {
         type: "object",
         properties: {
@@ -78,7 +84,14 @@ export const CERTIFICATE_OVERVIEW_OPENAPI_SCHEMAS = {
       renewal: {
         type: "object",
         properties: {
-          state: { type: "string", enum: [...RENEWAL_STATES] },
+          state: {
+            type: "string",
+            enum: [...RENEWAL_STATES],
+            description:
+              "pending: Caddy has no certificate yet and the host or entry was saved under 15 minutes ago. " +
+              "missing: Caddy still has none after that, so obtaining the first one is failing (check Caddy's log, the DNS provider and ports 80/443). " +
+              "unknown: Caddy could not be asked or the check has not finished, which says nothing about the certificate.",
+          },
           renewFrom: {
             type: "string",
             format: "date-time",
@@ -117,6 +130,7 @@ export const CERTIFICATE_OVERVIEW_OPENAPI_SCHEMAS = {
       "validTo",
       "expirySource",
       "daysLeft",
+      "checkedAt",
       "obtainedBy",
       "renewal",
       "usedBy",

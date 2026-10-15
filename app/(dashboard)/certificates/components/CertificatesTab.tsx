@@ -32,6 +32,7 @@ import {
   daysLeftText,
   expiryToneFor,
   formatDate,
+  noExpiryText,
   obtainedView,
   renewalView,
   rowSearchText,
@@ -39,7 +40,7 @@ import {
   usedBySummary,
   userHref,
 } from "../format";
-import type { ImportedCertView } from "../page";
+import type { ImportedCertView, ManagedCertificateView } from "../page";
 import { HostsCell, type HostLink } from "./HostsCell";
 import { ListSearch } from "./ListSearch";
 
@@ -51,7 +52,10 @@ type Props = {
   rows: CertificateOverviewRow[];
   generatedAt: string;
   canWrite: boolean;
+  /** The certificates Caddy obtains that a row can be edited as. */
+  managedCertificates: ManagedCertificateView[];
   onEditImported: (cert: ImportedCertView) => void;
+  onEditManaged: (cert: ManagedCertificateView) => void;
 };
 
 function rowDomId(id: string): string {
@@ -71,7 +75,7 @@ function rowLabel(row: CertificateOverviewRow): string {
   return row.domains[0] ?? row.name;
 }
 
-export function CertificatesTab({ rows, generatedAt, canWrite, onEditImported }: Props) {
+export function CertificatesTab({ rows, generatedAt, canWrite, managedCertificates, onEditImported, onEditManaged }: Props) {
   const now = new Date(generatedAt).getTime();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -148,8 +152,11 @@ export function CertificatesTab({ rows, generatedAt, canWrite, onEditImported }:
     );
   }
 
-  const editRow = (row: CertificateOverviewRow) => () =>
-    onEditImported({ id: row.certificateId!, name: row.name, domains: row.domains });
+  const editRow = (row: CertificateOverviewRow) => () => {
+    const managed = row.kind === "managed" ? managedCertificates.find((cert) => cert.id === row.certificateId) : undefined;
+    if (managed) onEditManaged(managed);
+    else onEditImported({ id: row.certificateId!, name: row.name, domains: row.domains });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -191,7 +198,7 @@ export function CertificatesTab({ rows, generatedAt, canWrite, onEditImported }:
           }}
           options={[
             { value: "all", label: <>All <span className="num text-muted-foreground">{rows.length}</span></> },
-            { value: "due", label: <>Due for renewal <span className="num text-warn">{dueCount}</span></> },
+            { value: "due", label: <>Needs attention <span className="num text-warn">{dueCount}</span></> },
             { value: "ok", label: <>Healthy <span className="num text-muted-foreground">{healthyCount}</span></> },
           ]}
         />
@@ -305,8 +312,7 @@ function rowParts(row: CertificateOverviewRow, now: number) {
     label,
     more,
     second,
-    // Entries left from earlier versions: Caddy obtains these on its own, and the entry can be deleted.
-    obtained: row.kind === "managed" ? { label: obtained.label, detail: "Older entry" } : obtained,
+    obtained,
     renewal: renewalView(row, now),
     expiryTone,
     hostLinks,
@@ -360,7 +366,7 @@ function CertificateTableRow({
             <span className={cn("num text-xs", expiryTone)}>{daysLeftText(row.daysLeft!)}</span>
           </span>
         ) : (
-          <span className="text-soft">Not read yet</span>
+          <span className="text-soft">{noExpiryText(row)}</span>
         )}
       </TableCell>
       <TableCell>
@@ -420,7 +426,7 @@ function CertificateCard({
               Expires {formatDate(row.validTo)} · <span className={cn("num", expiryTone)}>{daysLeftText(row.daysLeft!)}</span>
             </>
           ) : (
-            "Expiry not read yet"
+            noExpiryText(row, true)
           )}
         </span>
         <span className="truncate text-xs text-soft">
@@ -449,7 +455,7 @@ function RowActions({
   onDelete: () => void;
 }) {
   const host = row.kind === "acme" ? row.usedBy.find((user) => user.kind === "proxy_host" && user.id === row.hostId) : null;
-  const editable = canWrite && row.kind === "imported";
+  const editable = canWrite && (row.kind === "imported" || row.kind === "managed");
   const deletable = canWrite && row.kind !== "acme";
   if (!host && !editable && !deletable) return null;
   const name = row.kind === "acme" ? rowLabel(row) : row.name;

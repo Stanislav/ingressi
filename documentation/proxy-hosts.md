@@ -11,7 +11,7 @@ A proxy host sends the traffic for one or more domains to services on your netwo
   - a burst of 5xx responses in the last 24 hours ("501 burst at 09:02", or "since" while it lasts),
   - a 5xx share of 5% or more over 24 hours (with at least 20 requests),
   - blocked traffic far above the host's usual,
-  - a certificate that expired, whose renewal is failing, or an imported one that expires within 30 days.
+  - a certificate that expired, whose renewal is failing, that Caddy has not obtained 15 minutes after the host was saved (*No certificate issued*), or an imported one that expires within 30 days.
 - **Requests, 24h** and **5xx**: from [analytics](analytics.md), with a bar showing each host's share of the busiest host's requests. Shown to users with `analytics:read` when ClickHouse is configured. When ClickHouse does not answer, the list says so above the table and leaves out the traffic, the 5xx rates and the traffic alerts.
 - **Protection**: what applies to the host once its own settings and the global ones are combined: WAF (blocking or detection only), sign-in (SSO with dashboard accounts, Authentik, forward auth), access list, client certificates (mTLS), rate limiting and geo blocking.
 - **Certificate**: days left, issuer and expiry date, and the renewal state when Caddy is renewing it or the renewal fails (from the [certificates](certificates.md) overview; users without `certificates:read` see only whether Caddy obtains it).

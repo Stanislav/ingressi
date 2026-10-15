@@ -7,6 +7,7 @@
 import type { ProxyHost } from "@/lib/models/proxy-hosts";
 import type { AuthentikSettings, ForwardAuthSettings } from "@/lib/settings";
 import type { HostApprovalContext } from "@/ee/approvals/types";
+import type { DnsProviderChoices } from "@/src/lib/dns-provider-choice";
 
 export type EditorCertificate = {
   id: number;
@@ -17,6 +18,8 @@ export type EditorCertificate = {
   /** When the certificate expires, for imported certificates (read from the PEM). */
   expiresAt: string | null;
   issuer: string | null;
+  /** Managed certificates: the DNS provider it is set to (a name under Certificate settings), null for the default. */
+  provider: string | null;
 };
 
 /** The certificate Caddy serves for the host's domains today, when Caddy manages it. */
@@ -115,6 +118,10 @@ export type HostEditorData = {
   geoblockGlobal: { enabled: boolean } | null;
   /** A default DNS provider exists, so Caddy can obtain wildcard certificates. */
   dnsProviderConfigured: boolean;
+  /** The DNS providers under Certificate settings, for the certificate section. */
+  dnsChoices: DnsProviderChoices;
+  /** The user may create a certificate (certificates:write without a tag scope). */
+  canCreateCertificate: boolean;
   lastSaved: { at: string; by: string | null } | null;
   historyHref: string | null;
 };

@@ -460,17 +460,28 @@ function expiryOf(domain: string, servername: string, entry: CacheEntry): Manage
 }
 
 /**
- * The certificates Caddy serves for `domains`, keyed by the domain (trimmed
- * and lower-cased). A domain is missing when Caddy serves no certificate for
- * it (not obtained yet, host disabled, Caddy unreachable), when the
- * certificate it serves does not name it, when the name cannot be asked for
- * (an IP address) or when its first handshake did not finish within `waitMs`.
+ * What the last handshake for a domain showed. A domain with no reading at all
+ * has not been asked yet (the first handshake did not finish within `waitMs`),
+ * or cannot be asked for (an IP address).
  */
-export async function getManagedCertificateExpiry(
+export type ManagedCertificateReading =
+  /** Caddy serves a certificate that names the domain. */
+  | { kind: "served"; expiry: ManagedCertificateExpiry }
+  /** Caddy answered without a certificate for the name (not obtained yet or failing), or with one that does not name it. */
+  | { kind: "none"; checkedAt: string }
+  /** The handshake did not work (Caddy unreachable, a TLS error): says nothing about the certificate. */
+  | { kind: "unavailable"; checkedAt: string };
+
+/**
+ * What Caddy showed for `domains`, keyed by the domain (trimmed and
+ * lower-cased). Domains without a reading are left out; see
+ * ManagedCertificateReading.
+ */
+export async function getManagedCertificateReadings(
   domains: readonly string[],
   options: ManagedCertificateExpiryOptions = {}
-): Promise<Map<string, ManagedCertificateExpiry>> {
-  const result = new Map<string, ManagedCertificateExpiry>();
+): Promise<Map<string, ManagedCertificateReading>> {
+  const result = new Map<string, ManagedCertificateReading>();
   // Checks turned off: nothing to read (unless a test replaced the probe).
   if (!state.probe && !caddyTlsAddress()) return result;
   const now = new Date();
@@ -497,8 +508,34 @@ export async function getManagedCertificateExpiry(
 
   for (const [domain, servername] of names) {
     const entry = state.entries.get(servername);
-    const expiry = entry ? expiryOf(domain, servername, entry) : null;
-    if (expiry) result.set(domain, expiry);
+    if (!entry) continue;
+    const checkedAt = new Date(entry.at).toISOString();
+    if (entry.result.kind === "certificate") {
+      const expiry = expiryOf(domain, servername, entry);
+      result.set(domain, expiry ? { kind: "served", expiry } : { kind: "none", checkedAt });
+    } else if (entry.result.kind === "missing") {
+      result.set(domain, { kind: "none", checkedAt });
+    } else {
+      result.set(domain, { kind: "unavailable", checkedAt });
+    }
+  }
+  return result;
+}
+
+/**
+ * The certificates Caddy serves for `domains`, keyed by the domain (trimmed
+ * and lower-cased). A domain is missing when Caddy serves no certificate for
+ * it (not obtained yet, host disabled, Caddy unreachable), when the
+ * certificate it serves does not name it, when the name cannot be asked for
+ * (an IP address) or when its first handshake did not finish within `waitMs`.
+ */
+export async function getManagedCertificateExpiry(
+  domains: readonly string[],
+  options: ManagedCertificateExpiryOptions = {}
+): Promise<Map<string, ManagedCertificateExpiry>> {
+  const result = new Map<string, ManagedCertificateExpiry>();
+  for (const [domain, reading] of await getManagedCertificateReadings(domains, options)) {
+    if (reading.kind === "served") result.set(domain, reading.expiry);
   }
   return result;
 }

@@ -270,8 +270,8 @@ test.describe('Certificates', () => {
       const row = page.getByRole('row').filter({ hasText: certName });
       await expect(row.getByText('Replace soon')).toBeVisible();
 
-      // The status filter keeps it under "Due for renewal".
-      await page.getByRole('group', { name: 'Status' }).getByRole('button', { name: /due for renewal/i }).click();
+      // The status filter keeps it under "Needs attention".
+      await page.getByRole('group', { name: 'Status' }).getByRole('button', { name: /needs attention/i }).click();
       await expect(row).toBeVisible();
       await page.getByRole('group', { name: 'Status' }).getByRole('button', { name: /healthy/i }).click();
       await expect(row).toHaveCount(0);

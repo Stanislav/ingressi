@@ -3852,6 +3852,7 @@ const spec = {
           autoRenew: { type: "boolean" },
           providerOptions: {
             type: ["object", "null"],
+            description: "DNS provider for this managed certificate, by the name it has under Certificate settings. Without it the default provider is used; null on update clears it.",
             properties: { provider: { type: "string" } },
             required: ["provider"],
             additionalProperties: false,

@@ -11,6 +11,7 @@ import { parseStoredTags } from "@/src/lib/host-tags";
 import { getCaddyApplyStatus } from "@/src/lib/caddy-apply-status";
 import { filterManagedCertificatesForAccess, getManagedCertificates } from "@/src/lib/managed-certificates";
 import { getSetupChecklist } from "@/src/lib/setup-checklist";
+import { FIRST_CERTIFICATE_GRACE_MS } from "@/src/lib/certificate-renewal";
 import type { AttentionItem, AttentionProvider } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -42,7 +43,7 @@ export const certificatesProvider: AttentionProvider = {
       const hosts = status.proxyHosts.map((host) => host.name).slice(0, 3).join(", ");
       const id = `managed:${status.servername}`;
       if (status.state === "missing" || status.state === "mismatch") {
-        if (status.changedAt && now.getTime() - Date.parse(status.changedAt) < 15 * 60 * 1000) continue;
+        if (status.changedAt && now.getTime() - Date.parse(status.changedAt) < FIRST_CERTIFICATE_GRACE_MS) continue;
         items.push({
           id,
           severity: "critical",

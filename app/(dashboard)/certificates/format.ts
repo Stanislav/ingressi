@@ -48,6 +48,14 @@ export function timeLeftText(validTo: string, now: number): string {
   return plural(Math.floor(days / 365.25), "year", "years");
 }
 
+/** "3 Nov 12:05 UTC" for a check time. */
+export function formatCheckedAt(value: string | number): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "–";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+}
+
 export type RenewalView = { tone: StatusTone; label: string; detail: string };
 
 /** The renewal column: a status with one line of detail ("" when the status says it all). */
@@ -79,6 +87,14 @@ export function renewalView(row: CertificateOverviewRow, now: number): RenewalVi
         label: "Not managed",
         detail: row.kind === "acme" ? "The host is disabled" : "No enabled host uses it",
       };
+    case "pending":
+      return { tone: "off", label: "Obtaining", detail: "Caddy is getting the first certificate" };
+    case "missing":
+      return {
+        tone: "bad",
+        label: "Not issued",
+        detail: row.checkedAt ? `Caddy has none; checked ${formatCheckedAt(row.checkedAt)}` : "Caddy has none; check its log",
+      };
     case "unknown":
     default:
       return imported
@@ -87,11 +103,18 @@ export function renewalView(row: CertificateOverviewRow, now: number): RenewalVi
   }
 }
 
+/** What the expiry column says when there is no expiry: no certificate at all, or one not read yet. */
+export function noExpiryText(row: CertificateOverviewRow, sentence = false): string {
+  if (row.renewal.state === "missing" || row.renewal.state === "pending") return sentence ? "No certificate yet" : "No certificate";
+  return sentence ? "Expiry not read yet" : "Not read yet";
+}
+
 /** The timeline marker's colour for a row. */
 export function expiryToneFor(row: CertificateOverviewRow): ExpiryTone {
   switch (row.renewal.state) {
     case "overdue":
     case "expired":
+    case "missing":
       return "bad";
     case "due":
     case "replace_soon":

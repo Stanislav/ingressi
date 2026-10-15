@@ -216,6 +216,8 @@ describe('busiest hosts', () => {
     expect(hostTone({ ...healthy, errors5xx: 9, errorRate5xx: 0.5 }).tone).toBe('ok');
     expect(hostTone({ ...healthy, errors5xx: 10, errorRate5xx: 0.02 }).tone).toBe('warn');
     expect(hostTone({ ...healthy, certificateDaysLeft: 10 }).label).toBe('Certificate expires within two weeks');
+    expect(hostTone({ ...healthy, certificateDaysLeft: null, certificateMissing: true })).toEqual({ tone: 'bad', label: 'No certificate issued' });
+    expect(hostTone({ ...healthy, enabled: false, certificateMissing: true }).tone).toBe('off');
   });
 });
 

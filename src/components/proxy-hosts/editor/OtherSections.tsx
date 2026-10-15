@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusDot } from "@/components/ui/StatusDot";
@@ -10,6 +11,8 @@ import { AddButton, EditorCard, Field, FieldError, RemoveButton, TextField, Togg
 import { NativeSelect, SelectField } from "./controls";
 import { NameAndTagsCard } from "./RoutingSection";
 import { REDIRECT_STATUSES, rowKey, type RedirectStatus } from "./model";
+import { ManagedCertificateSheet } from "@/components/certificates/ManagedCertificateSheet";
+import { describeChallenge, effectiveChallenge } from "@/src/lib/dns-provider-choice";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -44,10 +47,16 @@ function InfoCell({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function CertificateSection() {
-  const { form, update, data } = useEditor();
+  const { form, update, data, certificateSaved } = useEditor();
+  // The sheet that creates a managed certificate with another DNS provider, or edits the chosen one.
+  const [sheet, setSheet] = useState<"new" | "edit" | null>(null);
   const chosen = form.certificateId === null ? null : data.certificates.find((certificate) => certificate.id === form.certificateId) ?? null;
   const served = form.certificateId === null && data.host?.certificateId === null ? data.servedCertificate : null;
   const uncovered = chosen ? form.domains.filter((domain) => !covered(domain, chosen.domains)) : [];
+  const managed = chosen?.type === "managed" ? chosen : null;
+  // Imported certificates are not obtained: only automatic hosts and managed entries have a challenge.
+  const obtainedWith = chosen && !managed ? null : describeChallenge(effectiveChallenge(data.dnsChoices, managed?.provider ?? null));
+  const otherProvider = data.dnsChoices.providers.find((provider) => provider.name !== data.dnsChoices.defaultProvider);
   return (
     <EditorCard
       id="certificate"
@@ -95,6 +104,11 @@ export function CertificateSection() {
             <InfoCell label="Renewal">
               {chosen.type === "imported" ? <StatusDot tone="warn" label="Manual: import a new one before it expires" /> : <StatusDot tone="ok" label="Automatic" />}
             </InfoCell>
+            {obtainedWith && (
+              <InfoCell label="Obtained with">
+                <span data-testid="certificate-challenge">{obtainedWith}</span>
+              </InfoCell>
+            )}
           </>
         ) : served ? (
           <>
@@ -116,11 +130,48 @@ export function CertificateSection() {
             <InfoCell label="Renewal">
               <StatusDot tone="ok" label="Automatic" />
             </InfoCell>
+            <InfoCell label="Obtained with">
+              <span data-testid="certificate-challenge">{obtainedWith}</span>
+            </InfoCell>
           </>
         ) : (
-          <p className="m-0 text-[13px] text-muted-foreground">Obtained and renewed automatically once the host is saved.</p>
+          <>
+            <InfoCell label="Obtained with">
+              <span data-testid="certificate-challenge">{obtainedWith}</span>
+            </InfoCell>
+            <p className="m-0 text-[13px] text-muted-foreground">Obtained and renewed automatically once the host is saved.</p>
+          </>
         )}
       </div>
+      {data.canCreateCertificate && ((!chosen && otherProvider) || managed) && (
+        <div className="flex flex-wrap gap-2">
+          {!chosen && otherProvider && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setSheet("new")}>
+              Use a different DNS provider
+            </Button>
+          )}
+          {managed && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setSheet("edit")}>
+              Edit certificate
+            </Button>
+          )}
+        </div>
+      )}
+      {sheet && (
+        <ManagedCertificateSheet
+          open
+          cert={sheet === "edit" && managed ? { id: managed.id, name: managed.name, domains: managed.domains, provider: managed.provider } : null}
+          choices={data.dnsChoices}
+          initial={{ name: form.domains[0] ?? "", domains: form.domains, provider: otherProvider?.name ?? null }}
+          onClose={() => setSheet(null)}
+          onSaved={(saved) =>
+            certificateSaved(
+              { id: saved.id, name: saved.name, type: "managed", domains: saved.domains, expiresAt: null, issuer: null, provider: saved.provider },
+              sheet === "new"
+            )
+          }
+        />
+      )}
       {uncovered.length > 0 && (
         <p className="m-0 text-xs text-warn">
           The certificate does not name {uncovered.join(", ")}: browsers will warn on {uncovered.length === 1 ? "that domain" : "those domains"}.

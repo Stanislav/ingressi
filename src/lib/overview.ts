@@ -160,19 +160,26 @@ function hostLabel(host: Pick<ProxyHost, "name" | "domains">): string {
   return host.domains[0] ?? host.name;
 }
 
-/** Whole days of certificate left per proxy host id (the earliest expiry among the certificates it uses). */
-async function certificateDaysByHost(access: Access, now: number): Promise<Map<number, number>> {
+/**
+ * Per proxy host id: whole days of certificate left (the earliest expiry among
+ * the certificates it uses), and whether Caddy has no certificate for it
+ * a while after it was saved.
+ */
+async function certificatesByHost(access: Access, now: number): Promise<{ days: Map<number, number>; missing: Set<number> }> {
   const overview = await buildCertificateOverview(access, { now, waitMs: CERTIFICATE_WAIT_MS });
   const days = new Map<number, number>();
+  const missing = new Set<number>();
   for (const row of overview.certificates) {
-    if (row.daysLeft === null || !row.active) continue;
+    if (!row.active) continue;
     for (const user of row.usedBy) {
       if (user.kind !== "proxy_host") continue;
+      if (row.renewal.state === "missing") missing.add(user.id);
+      if (row.daysLeft === null) continue;
       const known = days.get(user.id);
       if (known === undefined || row.daysLeft < known) days.set(user.id, row.daysLeft);
     }
   }
-  return days;
+  return { days, missing };
 }
 
 /** The dot of a host: disabled, then certificates and errors, worst first. */
@@ -181,10 +188,13 @@ export function hostTone(input: {
   errors5xx: number;
   errorRate5xx: number;
   certificateDaysLeft: number | null;
+  /** Caddy has no certificate for the host, a while after it was saved. */
+  certificateMissing?: boolean;
   burst: { ongoing: boolean } | null;
 }): { tone: OverviewTone; label: string } {
   if (!input.enabled) return { tone: "off", label: "Disabled" };
   const days = input.certificateDaysLeft;
+  if (input.certificateMissing) return { tone: "bad", label: "No certificate issued" };
   if (days !== null && days < 0) return { tone: "bad", label: "Certificate expired" };
   if (input.burst?.ongoing) return { tone: "bad", label: "Answering with server errors now" };
   if (input.errors5xx >= HOST_MIN_ERRORS && input.errorRate5xx >= HOST_BAD_ERROR_RATE) return { tone: "bad", label: "Many server errors" };
@@ -210,15 +220,15 @@ export async function loadBusiestHosts(
   const hosts = await listProxyHosts(scopeTagsFor(access, "proxy_hosts"));
   const resolved = resolveRange({ range }, nowSeconds);
   const showCertificates = can(access, "certificates:read");
-  const [summaries, certificateDays] = await Promise.all([
+  const [summaries, certificates] = await Promise.all([
     queryHostSummaries({
       range: resolved,
       hosts: hosts.map((host) => ({ id: host.id, domains: host.domains.map(normalizeDomain).filter(Boolean) })),
       allHosts: await allProxyHostDomains(),
     }),
     showCertificates
-      ? within(() => certificateDaysByHost(access, now.getTime()), new Map<number, number>(), SECTION_TIMEOUT_MS)
-      : Promise.resolve(new Map<number, number>()),
+      ? within(() => certificatesByHost(access, now.getTime()), { days: new Map<number, number>(), missing: new Set<number>() }, SECTION_TIMEOUT_MS)
+      : Promise.resolve({ days: new Map<number, number>(), missing: new Set<number>() }),
   ]);
   const byId = new Map(hosts.map((host) => [host.id, host]));
   const bursts = new Map<number, { status: number; start: number; ongoing: boolean }>();
@@ -243,9 +253,10 @@ export async function loadBusiestHosts(
   const readHosts = can(access, "proxy_hosts:read");
   const rows: OverviewHostRow[] = busiest.map((summary: HostSummary) => {
     const host = byId.get(summary.proxyHostId)!;
-    const certificateDaysLeft = showCertificates ? certificateDays.get(host.id) ?? null : null;
+    const certificateDaysLeft = showCertificates ? certificates.days.get(host.id) ?? null : null;
+    const certificateMissing = showCertificates && certificates.missing.has(host.id);
     const burst = bursts.get(host.id) ?? null;
-    const status = hostTone({ enabled: host.enabled, errors5xx: summary.errors5xx, errorRate5xx: summary.errorRate5xx, certificateDaysLeft, burst });
+    const status = hostTone({ enabled: host.enabled, errors5xx: summary.errors5xx, errorRate5xx: summary.errorRate5xx, certificateDaysLeft, certificateMissing, burst });
     return {
       id: host.id,
       label: hostLabel(host),

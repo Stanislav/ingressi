@@ -233,15 +233,19 @@ function IncidentBanner({
     case "certificate":
       tone = item.tone === "bad" ? "bad" : "warn";
       title =
-        item.state === "expired"
-          ? "The certificate has expired."
-          : item.state === "overdue"
-            ? "Renewing the certificate is failing."
-            : `The certificate expires in ${plural(item.daysLeft ?? 0, "day")}.`;
+        item.state === "missing"
+          ? "Caddy has no certificate for this host."
+          : item.state === "expired"
+            ? "The certificate has expired."
+            : item.state === "overdue"
+              ? "Renewing the certificate is failing."
+              : `The certificate expires in ${plural(item.daysLeft ?? 0, "day")}.`;
       body =
         item.state === "replace_soon"
           ? "It was imported, so it is not renewed automatically: import a renewed one."
-          : "Check Caddy's log for challenge errors, that the domain points at this server and that ports 80 and 443 are reachable.";
+          : item.state === "missing"
+            ? "Obtaining the first certificate has not worked since the host was saved, so HTTPS fails. Check Caddy's log for the challenge error, that the DNS provider can edit the domain's zone (DNS-01), that the domain points at this server and that ports 80 and 443 are reachable."
+            : "Check Caddy's log for challenge errors, that the domain points at this server and that ports 80 and 443 are reachable.";
       if (allowed.certificates) {
         actions.push(
           <Link key="certificates" href="/certificates" className={actionClass}>

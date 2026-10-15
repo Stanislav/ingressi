@@ -29,6 +29,8 @@ import {
 } from "@/src/lib/settings";
 import { resolveWafTuning } from "@/src/lib/waf-tuning";
 import { parsePemInfo } from "@/src/lib/certificate-overview";
+import { getProviderDefinition } from "@/src/lib/dns-providers";
+import { buildDnsProviderChoices } from "@/src/lib/dns-provider-choice";
 import { getManagedCertificateExpiry } from "@/src/lib/managed-certificates";
 import { certificateIdsInScope } from "@/src/lib/access-scope";
 import { can, scopeTagsFor, type Access } from "@/src/lib/permissions";
@@ -53,6 +55,7 @@ export function toEditorCertificate(certificate: Certificate): EditorCertificate
     domains: [...certificate.domainNames],
     expiresAt: pem?.validTo ?? null,
     issuer: pem?.issuer ?? null,
+    provider: typeof certificate.providerOptions?.provider === "string" ? certificate.providerOptions.provider : null,
   };
 }
 
@@ -224,6 +227,8 @@ export async function loadHostEditorData(
     rateLimitDefaults: rateLimit ? { enabled: Boolean(rateLimit.enabled), rules: rateLimit.rules.length } : null,
     geoblockGlobal: geoblock ? { enabled: Boolean(geoblock.enabled) } : null,
     dnsProviderConfigured: Boolean(dns?.default && dns.providers[dns.default]),
+    dnsChoices: buildDnsProviderChoices(dns, (name) => getProviderDefinition(name)?.displayName ?? name),
+    canCreateCertificate: can(access, "certificates:write") && scopeTagsFor(access, "certificates") === null,
     lastSaved: await lastSaved(access, host),
     historyHref: host && can(access, "audit_log:read") ? `/audit-log?search=${encodeURIComponent(host.name)}` : null,
   };

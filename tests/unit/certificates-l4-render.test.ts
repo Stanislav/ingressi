@@ -17,6 +17,7 @@ vi.mock('@/app/(dashboard)/certificates/actions', () => ({
   createCertificateAction: vi.fn(),
   updateCertificateAction: vi.fn(),
   deleteCertificateAction: vi.fn(),
+  saveManagedCertificateAction: vi.fn(),
 }));
 vi.mock('@/app/(dashboard)/certificates/ca-actions', () => ({
   createCaCertificateAction: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock('@/app/(dashboard)/l4-proxy-hosts/actions', () => ({
 vi.mock('@/app/(dashboard)/l4-proxy-hosts/bulk-actions', () => ({ bulkL4ProxyHostsAction: vi.fn() }));
 
 import CertificatesClient from '@/app/(dashboard)/certificates/CertificatesClient';
+import { NO_DNS_PROVIDERS } from '@/src/lib/dns-provider-choice';
 import type { CaCertificateView, IssuedClientCertificateView, MtlsRoleView } from '@/app/(dashboard)/certificates/page';
 import L4ProxyHostsClient from '@/app/(dashboard)/l4-proxy-hosts/L4ProxyHostsClient';
 import type { CertificateOverviewRow } from '@/src/lib/certificate-renewal';
@@ -58,6 +60,7 @@ const rows: CertificateOverviewRow[] = [
     validFrom: day(-59),
     validTo: day(31),
     expirySource: 'caddy',
+    checkedAt: null,
     daysLeft: 31,
     obtainedBy: { method: 'acme', challenge: 'http-01', dnsProvider: null, directory: null },
     renewal: { state: 'scheduled', renewFrom: day(1) },
@@ -80,6 +83,7 @@ const rows: CertificateOverviewRow[] = [
     validFrom: day(-300),
     validTo: day(20),
     expirySource: 'pem',
+    checkedAt: null,
     daysLeft: 20,
     obtainedBy: { method: 'imported' },
     renewal: { state: 'replace_soon', renewFrom: null },
@@ -99,6 +103,7 @@ const rows: CertificateOverviewRow[] = [
     validFrom: null,
     validTo: null,
     expirySource: null,
+    checkedAt: null,
     daysLeft: null,
     obtainedBy: { method: 'acme', challenge: 'dns-01', dnsProvider: 'Cloudflare', directory: null },
     renewal: { state: 'unknown', renewFrom: null },
@@ -149,6 +154,8 @@ function renderCertificates(initialTab: 'certificates' | 'authorities' | 'client
       caCertificates: [ca],
       clientCertificates: [clientCert],
       mtlsRoles: [role],
+      managedCertificates: [],
+      dnsChoices: NO_DNS_PROVIDERS,
       showTrustAnchors,
       canWrite: true,
       canCreateCertificate: true,
@@ -184,6 +191,37 @@ describe('certificates page', () => {
     expect(html).not.toContain('aria-label="Pages of certificates"');
   });
 
+  it('says a certificate was never issued, apart from one not read yet, and offers a managed certificate with a DNS provider', () => {
+    const grafana = rows[2];
+    const never: CertificateOverviewRow = { ...grafana, checkedAt: '2026-10-03T11:05:00.000Z', renewal: { state: 'missing', renewFrom: null } };
+    const fresh: CertificateOverviewRow = { ...grafana, id: 'acme:9', hostId: 9, domains: ['fresh.example.com'], renewal: { state: 'pending', renewFrom: null } };
+    const html = renderToStaticMarkup(
+      createElement(CertificatesClient, {
+        overview: { generatedAt: NOW, certificates: [never, fresh] },
+        caCertificates: [],
+        clientCertificates: [],
+        mtlsRoles: [],
+        managedCertificates: [],
+        dnsChoices: { providers: [{ name: 'godaddy', label: 'GoDaddy' }], defaultProvider: null },
+        showTrustAnchors: false,
+        canWrite: true,
+        canCreateCertificate: true,
+        canReadSettings: true,
+        initialTab: 'certificates',
+      })
+    );
+    expect(html).toContain('Not issued');
+    expect(html).toContain('Caddy has none; checked 3 Oct 11:05 UTC');
+    expect(html).toContain('Obtaining');
+    expect(html).toContain('No certificate');
+    expect(html).not.toContain('Not read yet');
+    // The failing one counts under "Needs attention", which was "Due for renewal".
+    expect(html).toMatch(/Needs attention <span class="num text-warn">1<\/span>/);
+    expect(html).not.toContain('Due for renewal');
+    expect(html).toContain('New managed certificate');
+    expect(html).toContain('Import certificate');
+  });
+
   it('leaves certificates expiring after 90 days off the timeline', () => {
     const far: CertificateOverviewRow = { ...rows[1], id: 'certificate:5', certificateId: 5, domains: ['far.example.com'], validTo: day(200), daysLeft: 200, renewal: { state: 'manual', renewFrom: null } };
     const html = renderToStaticMarkup(
@@ -192,6 +230,8 @@ describe('certificates page', () => {
         caCertificates: [],
         clientCertificates: [],
         mtlsRoles: [],
+        managedCertificates: [],
+        dnsChoices: NO_DNS_PROVIDERS,
         showTrustAnchors: false,
         canWrite: true,
         canCreateCertificate: true,
@@ -244,6 +284,8 @@ describe('certificates page', () => {
         caCertificates: [{ ...ca, issued: { active: 60, revoked: 0 } }],
         clientCertificates: many,
         mtlsRoles: [],
+        managedCertificates: [],
+        dnsChoices: NO_DNS_PROVIDERS,
         showTrustAnchors: true,
         canWrite: true,
         canCreateCertificate: true,

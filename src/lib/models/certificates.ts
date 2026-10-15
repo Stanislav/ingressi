@@ -129,7 +129,8 @@ export async function updateCertificate(id: number, input: Partial<CertificateIn
     type: input.type ?? existing.type,
     domainNames: input.domainNames ?? existing.domainNames,
     autoRenew: input.autoRenew ?? existing.autoRenew,
-    providerOptions: input.providerOptions ?? existing.providerOptions,
+    // null clears the override (back to the default provider); only an omitted field keeps it.
+    providerOptions: input.providerOptions !== undefined ? input.providerOptions : existing.providerOptions,
     certificatePem: input.certificatePem ?? existing.certificatePem,
     privateKeyPem: input.privateKeyPem ?? existing.privateKeyPem
   };

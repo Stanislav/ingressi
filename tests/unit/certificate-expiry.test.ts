@@ -12,6 +12,7 @@ import {
   caddyTlsAddress,
   clearCertificateExpiryCache,
   getManagedCertificateExpiry,
+  getManagedCertificateReadings,
   setManagedCertificateProbeForTests,
 } from '@/src/lib/managed-certificates';
 
@@ -120,6 +121,47 @@ describe('getManagedCertificateExpiry', () => {
     expect(Date.now() - started).toBeLessThan(1500);
     for (const socket of sockets) socket.destroy();
     silent.close();
+  });
+});
+
+describe('getManagedCertificateReadings', () => {
+  it('tells a served certificate from none, and from a handshake that did not work', async () => {
+    try {
+      const plain = createSelfSignedServerCertificate('app.example.test', ['app.example.test'], 60);
+      setManagedCertificateProbeForTests(async (servername) => {
+        if (servername === 'app.example.test') return { kind: 'certificate', pem: plain.certificatePem };
+        if (servername === 'none.example.test') return { kind: 'missing' };
+        if (servername === 'refused.example.test') return { kind: 'unreachable', code: 'ECONNREFUSED' };
+        if (servername === 'odd.example.test') return { kind: 'tls_error', code: 'ERR_SSL_SOMETHING' };
+        return { kind: 'certificate', pem: plain.certificatePem };
+      });
+
+      const result = await getManagedCertificateReadings([
+        'app.example.test', 'none.example.test', 'refused.example.test', 'odd.example.test', 'other.example.test',
+      ]);
+
+      expect(result.get('app.example.test')).toMatchObject({ kind: 'served', expiry: { domain: 'app.example.test' } });
+      expect(result.get('none.example.test')).toMatchObject({ kind: 'none' });
+      // A certificate that does not name the domain is no certificate for it.
+      expect(result.get('other.example.test')).toMatchObject({ kind: 'none' });
+      expect(result.get('refused.example.test')).toMatchObject({ kind: 'unavailable' });
+      expect(result.get('odd.example.test')).toMatchObject({ kind: 'unavailable' });
+      expect(Date.parse((result.get('none.example.test') as { checkedAt: string }).checkedAt)).not.toBeNaN();
+      // The expiry reader keeps answering with the served ones only.
+      expect([...(await getManagedCertificateExpiry(['app.example.test', 'none.example.test'])).keys()]).toEqual(['app.example.test']);
+    } finally {
+      setManagedCertificateProbeForTests(null);
+    }
+  });
+
+  it('leaves out a domain whose first handshake has not finished', async () => {
+    try {
+      setManagedCertificateProbeForTests(() => new Promise(() => {}));
+      const result = await getManagedCertificateReadings(['slow.example.test'], { waitMs: 50 });
+      expect(result.size).toBe(0);
+    } finally {
+      setManagedCertificateProbeForTests(null);
+    }
   });
 });
 

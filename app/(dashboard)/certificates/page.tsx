@@ -6,6 +6,11 @@ import { listCaCertificates, type CaCertificate } from '@/src/lib/models/ca-cert
 import { listIssuedClientCertificates, type IssuedClientCertificate } from '@/src/lib/models/issued-client-certificates';
 import { buildRoleCertIdMap, listMtlsRoles, type MtlsRole } from '@/src/lib/models/mtls-roles';
 import { listProxyHosts, type ProxyHost } from '@/src/lib/models/proxy-hosts';
+import { listCertificates } from '@/src/lib/models/certificates';
+import { getDnsProviderSettings } from '@/src/lib/settings';
+import { getProviderDefinition } from '@/src/lib/dns-providers';
+import { buildDnsProviderChoices } from '@/src/lib/dns-provider-choice';
+import type { ManagedCertificateView } from '@/src/components/certificates/ManagedCertificateSheet';
 import { buildCertificateOverview } from '@/src/lib/certificate-overview';
 import { trustAnchorUsage, type HostRef } from './trust';
 
@@ -41,6 +46,8 @@ export type ImportedCertView = { id: number; name: string; domains: string[] };
 
 export type CertificatesTab = 'certificates' | 'authorities' | 'client';
 
+export type { ManagedCertificateView };
+
 interface PageProps {
   searchParams: Promise<{ tab?: string }>;
 }
@@ -63,7 +70,7 @@ export default async function CertificatesPage({ searchParams }: PageProps) {
   const settingsReadable = can(access, 'settings:read');
   const { tab } = await searchParams;
 
-  const [overview, caCerts, issuedClientCerts, roles, roleCertIds, hosts] = await Promise.all([
+  const [overview, caCerts, issuedClientCerts, roles, roleCertIds, hosts, storedCertificates, dnsSettings] = await Promise.all([
     buildCertificateOverview(access),
     hideTrustAnchors ? Promise.resolve([] as CaCertificate[]) : listCaCertificates(),
     hideTrustAnchors ? Promise.resolve([] as IssuedClientCertificate[]) : listIssuedClientCertificates(),
@@ -73,7 +80,21 @@ export default async function CertificatesPage({ searchParams }: PageProps) {
       : buildRoleCertIdMap().catch(() => new Map<number, Set<number>>()),
     // CAs and roles serve every host, so "trusted by" looks at every host.
     hideTrustAnchors ? Promise.resolve([] as ProxyHost[]) : listProxyHosts(null),
+    listCertificates(),
+    getDnsProviderSettings(),
   ]);
+
+  // What the sheet needs to change a certificate Caddy obtains: only for rows the overview shows.
+  const shownCertificateIds = new Set(overview.certificates.map((row) => row.certificateId));
+  const managedCertificates: ManagedCertificateView[] = storedCertificates
+    .filter((cert) => cert.type === 'managed' && shownCertificateIds.has(cert.id))
+    .map((cert) => ({
+      id: cert.id,
+      name: cert.name,
+      domains: cert.domainNames,
+      provider: typeof cert.providerOptions?.provider === 'string' ? cert.providerOptions.provider : null,
+    }));
+  const dnsChoices = buildDnsProviderChoices(dnsSettings, (name) => getProviderDefinition(name)?.displayName ?? name);
 
   const usage = trustAnchorUsage(hosts, issuedClientCerts, roleCertIds);
   const caNames = new Map(caCerts.map((ca) => [ca.id, ca.name]));
@@ -126,6 +147,8 @@ export default async function CertificatesPage({ searchParams }: PageProps) {
       caCertificates={caCertificates}
       clientCertificates={clientCertificates}
       mtlsRoles={mtlsRoles}
+      managedCertificates={managedCertificates}
+      dnsChoices={dnsChoices}
       showTrustAnchors={!hideTrustAnchors}
       canWrite={canWrite}
       canCreateCertificate={canWrite && scope === null}

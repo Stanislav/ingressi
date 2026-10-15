@@ -17,6 +17,7 @@ vi.mock('@/app/(dashboard)/proxy-hosts/editor-actions', () => ({
   saveProxyHostEditorAction: vi.fn(),
   previewProxyHostEditorAction: vi.fn(),
 }));
+vi.mock('@/app/(dashboard)/certificates/actions', () => ({ saveManagedCertificateAction: vi.fn() }));
 
 import type { ProxyHost } from '@/src/lib/models/proxy-hosts';
 import type { HostEditorData } from '@/src/components/proxy-hosts/editor/types';
@@ -75,7 +76,7 @@ function data(overrides: Partial<HostEditorData> = {}): HostEditorData {
     template: null,
     initialDomain: null,
     forwardAuthAccess: { userIds: [], groupIds: [] },
-    certificates: [{ id: 2, name: 'Wildcard', type: 'imported', domains: ['*.example.com'], expiresAt: '2027-01-01T00:00:00.000Z', issuer: 'Example CA' }],
+    certificates: [{ id: 2, name: 'Wildcard', type: 'imported', domains: ['*.example.com'], expiresAt: '2027-01-01T00:00:00.000Z', issuer: 'Example CA', provider: null }],
     servedCertificate: null,
     accessLists: [{ id: 3, name: 'Office', description: null, rules: 2, members: 0, defaultAction: 'deny', otherHosts: 1 }],
     blockedSourcesActive: true,
@@ -103,6 +104,8 @@ function data(overrides: Partial<HostEditorData> = {}): HostEditorData {
     rateLimitDefaults: null,
     geoblockGlobal: null,
     dnsProviderConfigured: false,
+    dnsChoices: { providers: [], defaultProvider: null },
+    canCreateCertificate: true,
     lastSaved: { at: '2026-01-02T00:00:00.000Z', by: 'admin' },
     historyHref: '/audit-log?search=App',
     ...overrides,
@@ -125,6 +128,7 @@ function inEditor(element: ReactElement, editorData: HostEditorData = data()): s
       globalWafMode: 'blocking',
     },
     update: () => {},
+    certificateSaved: () => {},
     errors: {},
     touch: () => {},
     wasOf: () => null,
@@ -254,9 +258,42 @@ describe('host editor sections', () => {
     expect(certificate).toContain('Managed by Caddy (automatic)');
     expect(certificate).toContain('Wildcard · imported');
     expect(certificate).toContain('Redirect HTTP to HTTPS');
+    // Only the default provider is set up: nothing else to choose.
+    expect(certificate).not.toContain('Use a different DNS provider');
     const headers = inEditor(createElement(HeadersSection));
     expect(headers).toContain('Send the HSTS header');
     expect(headers).toContain('Include subdomains');
+  });
+
+  it('Certificate: says how the certificate is obtained and offers another DNS provider', () => {
+    const dnsChoices = {
+      providers: [{ name: 'cloudflare', label: 'Cloudflare' }, { name: 'godaddy', label: 'GoDaddy' }],
+      defaultProvider: 'cloudflare',
+    };
+    const automatic = inEditor(createElement(CertificateSection), data({ dnsChoices }));
+    expect(automatic).toContain('Obtained with');
+    expect(automatic).toContain('DNS-01 with Cloudflare (default)');
+    expect(automatic).toContain('Use a different DNS provider');
+    // Without certificates:write the button is left out, and so is it when only the default provider exists.
+    expect(inEditor(createElement(CertificateSection), data({ dnsChoices, canCreateCertificate: false }))).not.toContain('Use a different DNS provider');
+    expect(inEditor(createElement(CertificateSection), data({ dnsChoices: { ...dnsChoices, providers: [dnsChoices.providers[0]] } }))).not.toContain('Use a different DNS provider');
+    // No DNS provider at all: HTTP-01.
+    expect(inEditor(createElement(CertificateSection))).toContain('>HTTP-01<');
+
+    const managed = { id: 5, name: 'Shop', type: 'managed', domains: ['app.example.com'], expiresAt: null, issuer: null, provider: 'godaddy' };
+    const chosen = inEditor(createElement(CertificateSection), data({ dnsChoices, host: { ...host, certificateId: 5 }, certificates: [managed] }));
+    expect(chosen).toContain('DNS-01 with GoDaddy');
+    expect(chosen).not.toContain('(default)');
+    expect(chosen).toContain('Edit certificate');
+    expect(chosen).not.toContain('Use a different DNS provider');
+    // A managed certificate without an override follows the default provider.
+    const followsDefault = inEditor(createElement(CertificateSection), data({ dnsChoices, host: { ...host, certificateId: 5 }, certificates: [{ ...managed, provider: null }] }));
+    expect(followsDefault).toContain('DNS-01 with Cloudflare (default)');
+
+    // An imported certificate is not obtained from anyone.
+    const imported = inEditor(createElement(CertificateSection), data({ dnsChoices, host: { ...host, certificateId: 2 } }));
+    expect(imported).not.toContain('Obtained with');
+    expect(imported).not.toContain('Edit certificate');
   });
 
   it('Advanced: raw Caddy JSON is read-only for users who are not administrators', () => {
