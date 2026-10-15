@@ -156,9 +156,11 @@ describe('getManagedCertificateReadings', () => {
 
   it('leaves out a domain whose first handshake has not finished', async () => {
     try {
-      setManagedCertificateProbeForTests(() => new Promise(() => {}));
+      // Answers after the wait is over; waited for below, so the shared handshake slot is free again for the next test.
+      setManagedCertificateProbeForTests(() => new Promise((resolve) => setTimeout(() => resolve({ kind: 'missing' }), 200)));
       const result = await getManagedCertificateReadings(['slow.example.test'], { waitMs: 50 });
       expect(result.size).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 300));
     } finally {
       setManagedCertificateProbeForTests(null);
     }
