@@ -205,6 +205,16 @@ export function buildNtfyMessage(n: AlertNotification, topic: string): Record<st
   return { topic, title: headline(n), message: plainTextBody(n), priority, tags };
 }
 
+// ── Telegram ───────────────────────────────────────────────────────────
+
+/** Telegram caps a message at 4096 characters; sent as plain text (no parse_mode), so nothing needs escaping. */
+export const TELEGRAM_MAX_CHARS = 4000;
+
+export function buildTelegramMessage(n: AlertNotification, chatId: string): Record<string, unknown> {
+  const text = `${headline(n)}\n\n${plainTextBody(n)}`;
+  return { chat_id: chatId, text: cleanText(text, TELEGRAM_MAX_CHARS, true), disable_web_page_preview: true };
+}
+
 // ── E-mail ─────────────────────────────────────────────────────────────
 
 export function escapeHtml(text: string): string {

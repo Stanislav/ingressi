@@ -116,6 +116,15 @@ describe('PagerDuty', () => {
 });
 
 describe('ntfy and chat webhooks', () => {
+  it('posts Telegram plain text to the bot endpoint', async () => {
+    await deliverToChannel({ id: 6, name: 'tg', type: 'telegram', config: { chatId: '-100123' }, secrets: { botToken: '123456789:AAEhBOweik6ad9r_QXMENQjcrTu-oIfgkXs' } }, firing);
+    expect(call().url).toBe('https://api.telegram.org/bot123456789:AAEhBOweik6ad9r_QXMENQjcrTu-oIfgkXs/sendMessage');
+    const body = call().body as { chat_id: string; parse_mode?: string; text: string };
+    expect(body.chat_id).toBe('-100123');
+    expect(body.parse_mode).toBeUndefined();
+    expect(body.text.length).toBeLessThanOrEqual(4096);
+  });
+
   it('publishes ntfy JSON to the server root with the token', async () => {
     await deliverToChannel({ id: 5, name: 'ntfy', type: 'ntfy', config: { serverUrl: 'https://ntfy.example.com', topic: 'ops' }, secrets: { token: 'tk_1' } }, firing);
     expect(call().url).toBe('https://ntfy.example.com/');

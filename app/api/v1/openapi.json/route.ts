@@ -4869,7 +4869,7 @@ const spec = {
         properties: {
           id: { type: "integer" },
           name: { type: "string" },
-          type: { type: "string", enum: ["email", "slack", "teams", "webhook", "pagerduty", "ntfy"] },
+          type: { type: "string", enum: ["email", "slack", "teams", "webhook", "pagerduty", "ntfy", "telegram"] },
           enabled: { type: "boolean" },
           config: {
             description: "Non-secret settings of the channel type; credentials appear only as has* flags.",
@@ -4903,6 +4903,7 @@ const spec = {
                 type: "object",
                 properties: { serverUrl: { type: "string" }, topic: { type: "string" }, hasToken: { type: "boolean" } },
               },
+              { title: "telegram", type: "object", properties: { chatId: { type: "string" }, hasBotToken: { type: "boolean" } } },
             ],
           },
           lastDeliveryAt: { type: ["string", "null"], format: "date-time" },
@@ -4936,6 +4937,8 @@ const spec = {
           serverUrl: { type: "string", description: "ntfy: server, default https://ntfy.sh" },
           topic: { type: "string", description: "ntfy: topic" },
           token: { type: ["string", "null"], writeOnly: true, description: "ntfy: access token" },
+          chatId: { type: "string", description: "telegram: numeric chat id or public channel name (@channel)" },
+          botToken: { type: "string", writeOnly: true, description: "telegram: bot token from @BotFather" },
         },
       },
       AlertChannelInput: {
@@ -4943,7 +4946,7 @@ const spec = {
         additionalProperties: false,
         properties: {
           name: { type: "string", maxLength: 100 },
-          type: { type: "string", enum: ["email", "slack", "teams", "webhook", "pagerduty", "ntfy"] },
+          type: { type: "string", enum: ["email", "slack", "teams", "webhook", "pagerduty", "ntfy", "telegram"] },
           enabled: { type: "boolean", default: true },
           config: { $ref: "#/components/schemas/AlertChannelConfigInput" },
         },

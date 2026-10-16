@@ -265,6 +265,14 @@ export function buildDigestNtfyMessage(content: DigestContent, topic: string): R
   };
 }
 
+export function buildDigestTelegramMessage(content: DigestContent, chatId: string): Record<string, unknown> {
+  return {
+    chat_id: chatId,
+    text: truncateUtf8(`${digestTitle(content)}\n\n${renderDigestText(content)}`, NTFY_MAX_BYTES),
+    disable_web_page_preview: true,
+  };
+}
+
 export function buildDigestWebhookBody(content: DigestContent): Record<string, unknown> {
   return {
     version: 1,

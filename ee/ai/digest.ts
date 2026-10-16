@@ -12,7 +12,7 @@ import { BRAND_NAME } from "@/src/lib/brand";
 import { logAuditEvent } from "@/src/lib/audit";
 import { ApiValidationError } from "@/src/lib/api-errors";
 import { ChannelSecretsUnavailableError, getChannelRows, recordChannelDelivery, resolveChannel, type ResolvedChannel } from "@/ee/alerting/channels";
-import { describeFetchError, describeSmtpError, DeliveryError, postJson, sendEmailMessage, type DeliveryResult } from "@/ee/alerting/deliver";
+import { describeFetchError, describeSmtpError, DeliveryError, postJson, sendEmailMessage, telegramEndpoint, type DeliveryResult } from "@/ee/alerting/deliver";
 import { signWebhook } from "@/ee/alerting/format";
 import { isPlainObject, readBoolean, rejectUnknownKeys } from "@/ee/alerting/validation";
 import { buildDataBlock, requestModelText, type ModelPrompt } from "./explain";
@@ -20,6 +20,7 @@ import { getAiProviderConfig, type ResolvedAiProvider } from "./settings";
 import { collectDigestFacts, type DigestDataDependencies, type DigestFacts } from "./digest-data";
 import {
   buildDigestNtfyMessage,
+  buildDigestTelegramMessage,
   buildDigestSlackPayload,
   buildDigestTeamsPayload,
   buildDigestWebhookBody,
@@ -144,6 +145,9 @@ export async function deliverDigestToChannel(channel: ResolvedChannel, content: 
         await postJson(`${channel.config.serverUrl}/`, JSON.stringify(buildDigestNtfyMessage(content, channel.config.topic)), headers);
         break;
       }
+      case "telegram":
+        await postJson(telegramEndpoint(channel.secrets.botToken), JSON.stringify(buildDigestTelegramMessage(content, channel.config.chatId)));
+        break;
       case "pagerduty":
         return { ok: false, error: "Digests are not sent to PagerDuty" };
     }

@@ -99,6 +99,7 @@ describe('alert channels', () => {
     ['webhook', { url: 'https://hooks.example.com/alerts' }],
     ['pagerduty', { routingKey: ROUTING_KEY }],
     ['ntfy', { topic: 'ops-alerts' }],
+    ['telegram', { chatId: '-1001234567890', botToken: '123456789:AAEhBOweik6ad9r_QXMENQjcrTu-oIfgkXs' }],
   ])('creates a %s channel', async (type, config) => {
     const body = { name: `${type} channel`, type, config };
     const created = await create(createChannel, body);
@@ -182,6 +183,8 @@ describe('alert channels', () => {
     ['a missing webhook URL', 'webhook', {}],
     ['a malformed routing key', 'pagerduty', { routingKey: 'bad key!' }],
     ['a bad ntfy topic', 'ntfy', { topic: 'no spaces allowed' }],
+    ['a malformed Telegram bot token', 'telegram', { chatId: '42', botToken: 'nope' }],
+    ['a bad Telegram chat id', 'telegram', { chatId: 'not a chat', botToken: '123456789:AAEhBOweik6ad9r_QXMENQjcrTu-oIfgkXs' }],
   ])('validates %s (400)', async (_label, type, config) => {
     const { status, data } = await create(createChannel, { name: 'x', type, config });
     expect(status).toBe(400);

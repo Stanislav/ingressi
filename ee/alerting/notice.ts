@@ -14,7 +14,7 @@ import {
   resolveChannel,
   type ResolvedChannel,
 } from "./channels";
-import { DeliveryError, describeFetchError, describeSmtpError, postJson, sendEmailMessage, type DeliveryResult } from "./deliver";
+import { DeliveryError, describeFetchError, describeSmtpError, postJson, sendEmailMessage, telegramEndpoint, type DeliveryResult } from "./deliver";
 import { cleanText, escapeHtml, escapeSlack, escapeTeams, signWebhook } from "./format";
 
 export type Notice = {
@@ -95,6 +95,12 @@ async function send(channel: ResolvedChannel, notice: Notice): Promise<void> {
       );
       return;
     }
+    case "telegram":
+      await postJson(
+        telegramEndpoint(channel.secrets.botToken),
+        JSON.stringify({ chat_id: channel.config.chatId, text: text(notice).slice(0, 4000), disable_web_page_preview: true })
+      );
+      return;
     case "pagerduty":
       throw new DeliveryError("Notices are not sent to PagerDuty");
   }

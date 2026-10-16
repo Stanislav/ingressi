@@ -4,7 +4,7 @@
  * (no server-only dependencies).
  */
 
-export const CHANNEL_TYPES = ["email", "slack", "teams", "webhook", "pagerduty", "ntfy"] as const;
+export const CHANNEL_TYPES = ["email", "slack", "teams", "webhook", "pagerduty", "ntfy", "telegram"] as const;
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 
 export const RULE_TYPES = [
@@ -30,6 +30,7 @@ export const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
   webhook: "Webhook",
   pagerduty: "PagerDuty",
   ntfy: "ntfy",
+  telegram: "Telegram",
 };
 
 export const RULE_TYPE_LABELS: Record<RuleType, string> = {
@@ -180,13 +181,15 @@ export type WebhookUrlChannelView = { hasWebhookUrl: boolean; webhookUrlHint: st
 export type WebhookChannelView = { hasUrl: boolean; urlHint: string | null; hasHmacSecret: boolean };
 export type PagerDutyChannelView = { region: "us" | "eu"; hasRoutingKey: boolean };
 export type NtfyChannelView = { serverUrl: string; topic: string; hasToken: boolean };
+export type TelegramChannelView = { chatId: string; hasBotToken: boolean };
 
 export type ChannelConfigView =
   | EmailChannelView
   | WebhookUrlChannelView
   | WebhookChannelView
   | PagerDutyChannelView
-  | NtfyChannelView;
+  | NtfyChannelView
+  | TelegramChannelView;
 
 export type AlertChannelView = {
   id: number;

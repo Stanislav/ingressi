@@ -4,7 +4,7 @@
  *
  * Non-secret settings are stored as JSON in `config`. Credentials (SMTP
  * password, webhook URLs that embed a token, PagerDuty routing key, ntfy
- * token, HMAC secret) are stored together, encrypted, in `secrets`, and never
+ * token, Telegram bot token, HMAC secret) are stored together, encrypted, in `secrets`, and never
  * leave this module except to deliver a notification: the API and the
  * dashboard get `has*` flags and, for URLs, the scheme and host only.
  */
@@ -50,6 +50,7 @@ export type EmailConfig = {
 };
 export type PagerDutyRegion = "us" | "eu";
 export type NtfyConfig = { serverUrl: string; topic: string };
+export type TelegramConfig = { chatId: string };
 
 /** A channel with its decrypted credentials, for delivery only. */
 export type ResolvedChannel =
@@ -58,7 +59,8 @@ export type ResolvedChannel =
   | { id: number; name: string; type: "teams"; config: Record<string, never>; secrets: { webhookUrl: string } }
   | { id: number; name: string; type: "webhook"; config: Record<string, never>; secrets: { url: string; hmacSecret?: string } }
   | { id: number; name: string; type: "pagerduty"; config: { region: PagerDutyRegion }; secrets: { routingKey: string } }
-  | { id: number; name: string; type: "ntfy"; config: NtfyConfig; secrets: { token?: string } };
+  | { id: number; name: string; type: "ntfy"; config: NtfyConfig; secrets: { token?: string } }
+  | { id: number; name: string; type: "telegram"; config: TelegramConfig; secrets: { botToken: string } };
 
 type ChannelSettings = { config: Record<string, unknown>; secrets: Record<string, string> };
 type ChannelRow = typeof alertChannels.$inferSelect;
@@ -123,6 +125,7 @@ const CONFIG_FIELDS: Record<ChannelType, readonly string[]> = {
   webhook: ["url", "hmacSecret"],
   pagerduty: ["routingKey", "region"],
   ntfy: ["serverUrl", "topic", "token"],
+  telegram: ["chatId", "botToken"],
 };
 
 /**
@@ -246,6 +249,32 @@ export function normalizeChannelSettings(
       );
       return { config: { serverUrl, topic }, secrets };
     }
+    case "telegram": {
+      const chatId = pick(
+        "chatId",
+        (v) => {
+          const value = typeof v === "number" && Number.isSafeInteger(v) ? String(v) : readText(v, "chatId", 64);
+          if (!/^(-?\d{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$/.test(value)) {
+            throw new ApiValidationError("chatId must be a numeric chat id or a public channel name such as @mychannel");
+          }
+          return value;
+        },
+        required("chatId")
+      );
+      setSecret(
+        "botToken",
+        applySecret(readSecretInput(raw.botToken, "botToken", 256), prevSecrets.botToken, "botToken", {
+          required: true,
+          validate: (value) => {
+            if (!/^\d{3,20}:[A-Za-z0-9_-]{20,128}$/.test(value)) {
+              throw new ApiValidationError("botToken must be a Telegram bot token from @BotFather");
+            }
+            return value;
+          },
+        })
+      );
+      return { config: { chatId }, secrets };
+    }
   }
 }
 
@@ -298,6 +327,8 @@ function toConfigView(type: ChannelType, config: Record<string, unknown>, secret
       return { region: config.region === "eu" ? "eu" : "us", hasRoutingKey: has("routingKey") };
     case "ntfy":
       return { serverUrl: String(config.serverUrl ?? DEFAULT_NTFY_SERVER), topic: String(config.topic ?? ""), hasToken: has("token") };
+    case "telegram":
+      return { chatId: String(config.chatId ?? ""), hasBotToken: has("botToken") };
   }
 }
 
@@ -520,6 +551,8 @@ export function resolveChannel(row: ChannelRow): ResolvedChannel {
         config: { serverUrl: String(config.serverUrl ?? DEFAULT_NTFY_SERVER), topic: String(config.topic ?? "") },
         secrets: { token: secrets.token },
       };
+    case "telegram":
+      return { ...base, type, config: { chatId: String(config.chatId ?? "") }, secrets: { botToken: secrets.botToken ?? "" } };
   }
 }
 

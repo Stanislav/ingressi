@@ -13,6 +13,7 @@ import {
   type AlertRuleView,
   type EmailChannelView,
   type NtfyChannelView,
+  type TelegramChannelView,
   type PagerDutyChannelView,
   type RuleType,
   type Severity,
@@ -185,6 +186,13 @@ export function channelDestination(channel: AlertChannelView): { target: string;
       return {
         target: hostOf(config.serverUrl) ?? config.serverUrl,
         detail: `Topic ${config.topic} · ${config.hasToken ? "access token stored" : "no access token"}`,
+      };
+    }
+    case "telegram": {
+      const config = channel.config as TelegramChannelView;
+      return {
+        target: `Chat ${config.chatId}`,
+        detail: config.hasBotToken ? "Bot token stored" : "No bot token stored",
       };
     }
   }

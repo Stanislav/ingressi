@@ -6,7 +6,7 @@ Code: `ee/alerting/` (Elastic License 2.0).
 
 ## How it works
 
-- **Channels** say where notifications go: e-mail (SMTP), Slack, Microsoft Teams, a generic webhook, PagerDuty or ntfy.
+- **Channels** say where notifications go: e-mail (SMTP), Slack, Microsoft Teams, a generic webhook, PagerDuty, ntfy or Telegram.
 - **Rules** say what to watch, which channels to notify, the cooldown and whether to send a notice when the condition clears. Rules that watch hosts can be limited to chosen proxy hosts (`scope`), and most rules can wait until a condition has held for a while before firing (`forMinutes`).
 - An evaluator runs every 60 seconds on the node where the rules are configured (started from `src/instrumentation.ts`, never in tests). For each rule it lists the *subjects* that currently match (one per expiring certificate, failing upstream, failing instance, ...):
   - A subject that starts matching **fires**: one notification, unless a firing notification for the same rule and subject went out less than `cooldownMinutes` ago. The transition is recorded in the history either way.
@@ -116,6 +116,7 @@ What is not covered, and why:
 | `webhook` | | `url` (http or https), optional `hmacSecret` |
 | `pagerduty` | `region` (`us` or `eu`) | `routingKey` (Events API v2 integration key). Triggers and resolves with a stable `dedup_key` per rule and subject. |
 | `ntfy` | `serverUrl` (default `https://ntfy.sh`), `topic` | optional `token` |
+| `telegram` | `chatId` (numeric chat, group or channel id, or a public `@channel`) | `botToken` (from @BotFather). Sent as plain text through `api.telegram.org`. |
 
 Credentials, including webhook URLs that embed a token, are stored encrypted with `SESSION_SECRET` and re-encrypted by the startup rotation pass like every other stored secret. The API and the dashboard only show `has*` flags and, for URLs, the scheme and host. When updating a channel, an omitted or empty secret keeps the stored one and `null` removes an optional one. Changing the SMTP host or the ntfy server requires entering the password or token again, so a stored credential is never sent to a destination it was not entered for.
 

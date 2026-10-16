@@ -29,6 +29,7 @@ import {
   type ChannelType,
   type EmailChannelView,
   type NtfyChannelView,
+  type TelegramChannelView,
   type PagerDutyChannelView,
 } from "@/ee/alerting/types";
 import DigestSection from "@/ee/ai/ui/DigestSection";
@@ -58,6 +59,8 @@ type Form = {
   topic: string;
   token: string;
   clearToken: boolean;
+  chatId: string;
+  botToken: string;
 };
 
 const EMPTY_FORM: Form = {
@@ -82,6 +85,8 @@ const EMPTY_FORM: Form = {
   topic: "",
   token: "",
   clearToken: false,
+  chatId: "",
+  botToken: "",
 };
 
 function formFromChannel(channel: AlertChannelView): Form {
@@ -93,6 +98,9 @@ function formFromChannel(channel: AlertChannelView): Form {
   if (channel.type === "ntfy") {
     const config = channel.config as NtfyChannelView;
     return { ...form, serverUrl: config.serverUrl, topic: config.topic };
+  }
+  if (channel.type === "telegram") {
+    return { ...form, chatId: (channel.config as TelegramChannelView).chatId };
   }
   if (channel.type === "pagerduty") {
     return { ...form, region: (channel.config as PagerDutyChannelView).region };
@@ -123,6 +131,8 @@ function configFromForm(form: Form): Record<string, unknown> {
       return { routingKey: secret(form.routingKey), region: form.region };
     case "ntfy":
       return { serverUrl: form.serverUrl.trim(), topic: form.topic.trim(), token: secret(form.token, form.clearToken) };
+    case "telegram":
+      return { chatId: form.chatId.trim(), botToken: secret(form.botToken) };
   }
 }
 
@@ -347,7 +357,7 @@ export default function ChannelsTab({ channels, rules, canWrite = true, digest =
           <EmptyState
             compact
             title="No channels yet"
-            description="A channel is where alerts are sent: e-mail, Slack, Microsoft Teams, a webhook, PagerDuty or ntfy. Until a rule notifies one, its alerts are only listed in Ingressi."
+            description="A channel is where alerts are sent: e-mail, Slack, Microsoft Teams, a webhook, PagerDuty, ntfy or Telegram. Until a rule notifies one, its alerts are only listed in Ingressi."
             action={
               canWrite ? (
                 <Button size="sm" onClick={openCreate}>
@@ -613,6 +623,22 @@ export default function ChannelsTab({ channels, rules, canWrite = true, digest =
                 onChange={(value) => set("token", value)}
                 clear={{ checked: form.clearToken, onChange: (checked) => set("clearToken", checked), label: "Remove the stored token" }}
               />
+            </>
+          )}
+
+          {form.type === "telegram" && (
+            <>
+              <SecretField
+                id="telegram-bot-token"
+                label="Bot token"
+                value={form.botToken}
+                stored={stored("hasBotToken")}
+                onChange={(value) => set("botToken", value)}
+                hint="From @BotFather. Alerts are sent through api.telegram.org."
+              />
+              <Field label="Chat ID" htmlFor="telegram-chat-id" hint="A numeric chat, group or channel id, or a public channel such as @mychannel. The bot must be able to post there.">
+                <Input id="telegram-chat-id" value={form.chatId} onChange={(event) => set("chatId", event.target.value)} />
+              </Field>
             </>
           )}
 

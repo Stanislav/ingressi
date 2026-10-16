@@ -15,6 +15,7 @@ import {
   buildNtfyMessage,
   buildPagerDutyEvent,
   buildSlackPayload,
+  buildTelegramMessage,
   buildTeamsPayload,
   buildWebhookBody,
   pagerDutyDedupKey,
@@ -28,6 +29,11 @@ const PAGERDUTY_ENDPOINTS = {
   us: "https://events.pagerduty.com/v2/enqueue",
   eu: "https://events.eu.pagerduty.com/v2/enqueue",
 } as const;
+
+/** The bot token is part of the URL path; postJson errors never include it. */
+export function telegramEndpoint(botToken: string): string {
+  return `https://api.telegram.org/bot${botToken}/sendMessage`;
+}
 
 export type DeliveryResult = { ok: true; error: null } | { ok: false; error: string };
 
@@ -156,6 +162,9 @@ async function send(channel: ResolvedChannel, n: AlertNotification): Promise<voi
       await postJson(`${channel.config.serverUrl}/`, JSON.stringify(buildNtfyMessage(n, channel.config.topic)), headers);
       return;
     }
+    case "telegram":
+      await postJson(telegramEndpoint(channel.secrets.botToken), JSON.stringify(buildTelegramMessage(n, channel.config.chatId)));
+      return;
   }
 }
 

@@ -161,7 +161,7 @@ A schedule generates its reports every week (on a weekday, for the seven days be
 
 1. verifies the audit log's hash chain and records the result in the audit log (`audit_log_verified`, by no user), which the "Audit log integrity verified" control reads;
 2. generates each chosen report for the period, stores it and records its SHA-256 in the audit log exactly like a report made by hand, with `scheduleId` and a `packId` shared by the reports of the run (the **evidence pack**); `generatedBy` names the schedule. With saved questions in the schedule, the pack also has a **Traffic questions** report;
-3. sends a short notice to the chosen alert channels (e-mail, Slack, Teams, webhook, ntfy; never PagerDuty): the findings per report, the SHA-256 digests, the chain check and a link to the Compliance page. Report contents (users, token names, hosts) are never sent; they stay in the dashboard;
+3. sends a short notice to the chosen alert channels (e-mail, Slack, Teams, webhook, ntfy, Telegram; never PagerDuty): the findings per report, the SHA-256 digests, the chain check and a link to the Compliance page. Report contents (users, token names, hosts) are never sent; they stay in the dashboard;
 4. records the run on the schedule (`lastRunAt`, `lastStatus` `success` | `partial` | `failed`, `lastPackId`, the deliveries) and in the audit log (`compliance_evidence_pack_generated`).
 
 The run is claimed before it starts, so a slow or failing run is never repeated; the next run is at the next occurrence. A scheduler checks every five minutes (started from `src/instrumentation.ts`, never in tests). **Run now** (`POST /api/v1/compliance/schedules/{id}/run`) generates the reports for the week or month that has ended, by the caller.
