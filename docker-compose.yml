@@ -56,6 +56,20 @@ services:
       # Self-registration is disabled unless explicitly enabled
       AUTH_ALLOW_SELF_REGISTRATION: ${AUTH_ALLOW_SELF_REGISTRATION:-false}
       AUTH_ALLOW_OAUTH_REGISTRATION: ${AUTH_ALLOW_OAUTH_REGISTRATION:-false}
+      AUTH_ALLOW_OAUTH_ROLE_FROM_CLAIMS: ${AUTH_ALLOW_OAUTH_ROLE_FROM_CLAIMS:-false}
+
+      # Rate limits (see .env.example). Defaults are spelled out because an
+      # empty value is read as 0, not as the default.
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_WINDOW_MS: ${LOGIN_WINDOW_MS:-300000}
+      LOGIN_BLOCK_MS: ${LOGIN_BLOCK_MS:-900000}
+      AUTH_RATE_LIMIT_ENABLED: ${AUTH_RATE_LIMIT_ENABLED:-true}
+      AUTH_RATE_LIMIT_WINDOW: ${AUTH_RATE_LIMIT_WINDOW:-60}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-5}
+
+      # Certificate checks and storage (empty means the built-in default)
+      CADDY_TLS_ADDRESS: ${CADDY_TLS_ADDRESS:-}
+      CERTS_DIRECTORY: ${CERTS_DIRECTORY:-}
 
       # OAuth2/OIDC Authentication (Optional - works with Authentik, Authelia, Keycloak, etc.)
       OAUTH_ENABLED: ${OAUTH_ENABLED:-false}
@@ -70,6 +84,12 @@ services:
 
       # Instance sync (master): time limit in ms for one sync request to a slave
       INSTANCE_SYNC_TIMEOUT_MS: ${INSTANCE_SYNC_TIMEOUT_MS:-60000}
+
+      # Pull replica: values shown by Fleet -> Pull replicas on the master
+      INSTANCE_SYNC_MODE: ${INSTANCE_SYNC_MODE:-}
+      INSTANCE_MASTER_URL: ${INSTANCE_MASTER_URL:-}
+      INSTANCE_PULL_TOKEN: ${INSTANCE_PULL_TOKEN:-}
+      INSTANCE_PULL_INTERVAL: ${INSTANCE_PULL_INTERVAL:-}
 
       # ClickHouse analytics database (optional: leave CLICKHOUSE_PASSWORD empty to turn analytics off)
       CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
@@ -228,7 +248,7 @@ services:
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-analytics}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-ingressi}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?ERROR - CLICKHOUSE_PASSWORD is required}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
       - clickhouse-data:/var/lib/clickhouse
@@ -237,10 +257,17 @@ services:
       # (which sets listen_host to ::/0.0.0.0), leaving ClickHouse bound to loopback
       # only so the web container could no longer reach it.
       - ./docker/clickhouse/config.d/low-disk-write.xml:/etc/clickhouse-server/config.d/low-disk-write.xml:ro
+    # Compose interpolates every service, active profile or not, so the
+    # password check lives here and only fires when ClickHouse really starts.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - '[ -n "$$CLICKHOUSE_PASSWORD" ] || { echo "set CLICKHOUSE_PASSWORD in .env, or remove clickhouse from COMPOSE_PROFILES" >&2; exit 1; }; exec /entrypoint.sh "$$@"'
+      - clickhouse
     networks:
       - caddy-network
     healthcheck:
-      test: ["CMD-SHELL", "clickhouse-client --user ${CLICKHOUSE_USER:-ingressi} --password ${CLICKHOUSE_PASSWORD:?ERROR - CLICKHOUSE_PASSWORD is required} --query 'SELECT 1'"]
+      test: ["CMD-SHELL", "clickhouse-client --user \"$$CLICKHOUSE_USER\" --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1'"]
       interval: 30s
       timeout: 10s
       retries: 5
