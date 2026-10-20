@@ -2,6 +2,15 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.8.0
+
+- **Hosts with sign-in can let listed addresses skip it.** **Skip sign-in from** on a host's **Access** tab takes IP addresses, CIDR ranges and `private_ranges` for the built-in sign-in, Authentik and other forward-auth servers (`bypassSources` in the REST API). Listed clients reach the upstream without signing in; the access list, WAF, rate limits and path blocks still apply. See [Skipping sign-in for some addresses](forward-auth.md#skipping-sign-in-for-some-addresses).
+- **Telegram is an alert channel.**
+- **A host on a managed certificate shows the served issuer and expiry** on its Certificate tab.
+- **Analytics can be turned off by removing `clickhouse` from `COMPOSE_PROFILES`** with `CLICKHOUSE_PASSWORD` left empty, as [analytics.md](analytics.md) says; compose no longer stops on the missing password. With the profile on and an empty password, the ClickHouse container exits with a message saying so.
+- **Settings in `.env.example` reach the web container.** `AUTH_ALLOW_OAUTH_ROLE_FROM_CLAIMS`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MS`, `LOGIN_BLOCK_MS`, `AUTH_RATE_LIMIT_ENABLED`, `AUTH_RATE_LIMIT_WINDOW`, `AUTH_RATE_LIMIT_MAX`, `CADDY_TLS_ADDRESS`, `CERTS_DIRECTORY` and the pull replica settings (`INSTANCE_SYNC_MODE`, `INSTANCE_MASTER_URL`, `INSTANCE_PULL_TOKEN`, `INSTANCE_PULL_INTERVAL`) were ignored when set in `.env`. Values you already have in `.env` for these now take effect. Copy the updated `docker-compose.yml`.
+- No database migration.
+
 ## Upgrading to v2.7.0
 
 - **The certificate pages say why Caddy has no certificate.** Caddy's last error for the name (for example *presenting for challenge: adding temporary record for zone "example.com.": expected 1 zone, got 0 for example.com.*) is shown on the Certificates page, on the host's page and under **Needs attention**, and `issuanceError` (`at`, `message`) is in the rows of `GET /api/v1/certificates/overview`. Caddy writes the error lines of its certificate loggers to a new file, `tls-issuance.log`, in its log volume; its own output is unchanged. The text is sanitized before it is shown: stored credentials, URLs (reduced to the host), e-mail and IP addresses and long tokens are removed. See [Why a certificate is not issued](certificates.md#why-a-certificate-is-not-issued).
