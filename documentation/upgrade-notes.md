@@ -2,6 +2,11 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.8.1
+
+- **WebSockets work on hosts with sign-in.** Every WebSocket on a host with the built-in sign-in, Authentik or another forward-auth server failed with 502, signed in or not, because the sign-in check inherited the client's upgrade headers. The check no longer does.
+- No database migration.
+
 ## Upgrading to v2.8.0
 
 - **Hosts with sign-in can let listed addresses skip it.** **Skip sign-in from** on a host's **Access** tab takes IP addresses, CIDR ranges and `private_ranges` for the built-in sign-in, Authentik and other forward-auth servers (`bypassSources` in the REST API). Listed clients reach the upstream without signing in; the access list, WAF, rate limits and path blocks still apply. See [Skipping sign-in for some addresses](forward-auth.md#skipping-sign-in-for-some-addresses).
