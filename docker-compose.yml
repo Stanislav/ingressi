@@ -267,10 +267,24 @@ services:
         soft: 262144
         hard: 262144
 
-  # geoipupdate is gone: it needs a MaxMind account and license key, and the
+  # geoipupdate is optional: it needs a MaxMind account and license key, and the
   # GeoLite2 databases are read from the geoip-data volume. Put them there
-  # yourself (documentation/geo-blocking.md); country, continent and AS
+  # yourself if you want(documentation/geo-blocking.md); country, continent and AS
   # number rules match nothing without them.
+  geoipupdate:
+    container_name: ingressi-geoipupdate
+    image: ghcr.io/maxmind/geoipupdate
+    profiles: [geoipupdate]
+    restart: always
+    environment:
+      - GEOIPUPDATE_ACCOUNT_ID=${GEOIPUPDATE_ACCOUNT_ID:-}
+      - GEOIPUPDATE_LICENSE_KEY=${GEOIPUPDATE_LICENSE_KEY:-}
+      - 'GEOIPUPDATE_EDITION_IDS=GeoLite2-ASN GeoLite2-City GeoLite2-Country'
+      - GEOIPUPDATE_FREQUENCY=72
+    volumes:
+      - geoip-data:/usr/share/GeoIP:z
+    networks:
+      - caddy-network
 
 networks:
   caddy-network:
