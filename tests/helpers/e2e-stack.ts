@@ -68,7 +68,7 @@ export function composeCmd(args: string[], stack: E2eStack = e2eStack()): string
  * The environment `docker compose` needs for the stack's interpolations
  * (the test override supplies the real values; see the e2e-worktree-needs-env note).
  */
-export function composeEnv(stack: E2eStack = e2eStack()): NodeJS.ProcessEnv {
+export function composeEnv(): NodeJS.ProcessEnv {
   return { ...process.env, CLICKHOUSE_PASSWORD: 'test-clickhouse-password-2026' };
 }
 
@@ -102,7 +102,7 @@ export function listContainers(stack: E2eStack = e2eStack()): ContainerInfo[] {
   if (engine() === 'docker') {
     const output = execFileSync(engineBin(), [...composeArgs(stack), 'ps', '--format', 'json', '-a'], {
       cwd: process.cwd(),
-      env: composeEnv(stack),
+      env: composeEnv(),
       encoding: 'utf-8',
     });
 
@@ -156,7 +156,7 @@ export function listContainers(stack: E2eStack = e2eStack()): ContainerInfo[] {
  * provider filters by: `podman compose down` leaves that one behind. Both
  * engines set com.docker.compose.project, so this finds it.
  */
-export function removeLeftoverContainers(stack: E2eStack = e2eStack()): void {
+export function removeLeftoverContainers(): void {
   try {
     const ids = execFileSync(
       engineBin(),

@@ -18,11 +18,26 @@ Rules can be **block** or **allow**. Allow rules win over block rules, so you ca
 
 ## GeoIP setup
 
-Geo blocking requires MaxMind GeoLite2 Country and/or ASN databases. The stack does not download them for you; put them in the `geoip-data` volume:
+Geo blocking requires MaxMind GeoLite2 Country and/or ASN databases. The optional `geoipupdate` service downloads them for you:
 
 1. Register for a free MaxMind account at [maxmind.com](https://www.maxmind.com/)
-2. Download the GeoLite2 databases (the `GeoLite2-Country` and `GeoLite2-ASN` `.mmdb` files)
-3. Copy them into the volume, as root (the volume belongs to the container user):
+2. Generate a license key with `GeoLite2-Country` and `GeoLite2-ASN` permissions
+3. Add to your `.env`:
+   ```
+   GEOIPUPDATE_ACCOUNT_ID=your-account-id
+   GEOIPUPDATE_LICENSE_KEY=your-license-key
+   ```
+4. Start with the `geoipupdate` profile:
+   ```bash
+   docker compose --profile geoipupdate up -d
+   ```
+
+The databases are stored in the `geoip-data` volume and shared between the web and Caddy containers.
+
+Without the service you can put the databases in the volume yourself:
+
+1. Download the GeoLite2 databases (the `GeoLite2-Country` and `GeoLite2-ASN` `.mmdb` files) from your MaxMind account
+2. Copy them into the volume, as root (the volume belongs to the container user):
    ```bash
    # Docker
    docker run --rm -v ingressi_geoip-data:/geoip -v "$PWD":/tmp docker.io/library/alpine:latest \

@@ -41,10 +41,14 @@ export function engineCmd(args: string[]): string[] {
 }
 
 /**
- * The argv of `exec`. Podman has no `-T`: it allocates no TTY unless `-t` is
- * given, which is what `-T` asks Docker to do.
+ * The arguments of `exec`. Podman has no `-T`: it allocates no TTY unless
+ * `-t` is given, which is what `-T` asks Docker to do.
  */
+export function execArgs(args: string[]): string[] {
+  return engine() === 'podman' ? args.filter((arg) => arg !== '-T') : args;
+}
+
+/** The whole argv of `exec`: `execCmd(['-i', 'web'])` → `['podman', 'exec', '-i', 'web']`. */
 export function execCmd(args: string[]): string[] {
-  const withoutNoTty = engine() === 'podman' ? args.filter((arg) => arg !== '-T') : args;
-  return engineCmd(['exec', ...withoutNoTty]);
+  return engineCmd(['exec', ...execArgs(args)]);
 }

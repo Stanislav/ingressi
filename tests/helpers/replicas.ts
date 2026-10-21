@@ -30,7 +30,7 @@ export const ADMIN = { username: 'testadmin', password: 'TestPassword2026!' };
 export function replicaCompose(args: string[], options: { timeoutMs?: number } = {}): string {
   return execFileSync(engineBin(), [...composeArgs('replicas'), ...args], {
     cwd: process.cwd(),
-    env: composeEnv('replicas'),
+    env: composeEnv(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: options.timeoutMs ?? 300_000,

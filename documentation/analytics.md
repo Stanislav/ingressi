@@ -37,7 +37,7 @@ The web container starts normally without ClickHouse. The Analytics page shows a
 
 ## GeoIP databases
 
-The GeoLite2 databases are not part of the stack: put them in the `geoip-data` volume yourself ([geo-blocking.md](geo-blocking.md#geoip-setup)). Without them, country and network are empty and everything else works.
+The GeoLite2 databases come from the optional `geoipupdate` service or from the `geoip-data` volume ([geo-blocking.md](geo-blocking.md#geoip-setup)). Without them, country and network are empty and everything else works.
 
 ## What each request records
 

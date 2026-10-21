@@ -25,7 +25,7 @@
  * PostgreSQL, so compare them with Boolean(…).
  */
 import { execFileSync } from 'node:child_process';
-import { execCmd } from './engine';
+import { execArgs, engineBin } from './engine';
 
 /** The main dashboard's container (replica A on the replicas stack). */
 export const WEB_CONTAINER = 'ingressi-web';
@@ -83,7 +83,7 @@ ${body}
 }
 process.exit(0);
 `;
-  const output = execFileSync(execCmd(['-i', options.container ?? WEB_CONTAINER, 'bun', '-e', script]), {
+  const output = execFileSync(engineBin(), execArgs(['-i', options.container ?? WEB_CONTAINER, 'bun', '-e', script]), {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
     timeout: options.timeoutMs ?? 60_000,

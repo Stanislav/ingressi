@@ -12,7 +12,7 @@ ee/scripts/airgap-bundle.sh --version 2.0.0 --platform linux/amd64
 
 The script:
 
-1. Pulls the images the default stack runs, for the target platform: `ingressi-web`, `ingressi-caddy` and `ingressi-l4-port-manager` at the release tag, and the ClickHouse and Docker socket proxy images exactly as `docker-compose.yml` names them. The GeoLite2 databases are not part of the stack; copy them into the `geoip-data` volume ([geo-blocking.md](../../documentation/geo-blocking.md#geoip-setup)).
+1. Pulls the images the default stack runs, for the target platform: `ingressi-web`, `ingressi-caddy` and `ingressi-l4-port-manager` at the release tag, and the ClickHouse and Docker socket proxy images exactly as `docker-compose.yml` names them. The `geoipupdate` service is left out because it needs Internet access; copy the GeoLite2 databases into the `geoip-data` volume instead ([geo-blocking.md](../../documentation/geo-blocking.md#geoip-setup)).
 2. Verifies the cosign signature of each Ingressi image against the release workflow. It stops if one is missing or invalid.
 3. Writes `dist/ingressi-airgap-<version>-<platform>.tar` with its SHA-256 next to it.
 

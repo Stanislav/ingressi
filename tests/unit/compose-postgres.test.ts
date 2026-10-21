@@ -49,7 +49,7 @@ function web2Volumes(): string[] {
 
 describe('docker-compose.postgres.yml', () => {
   it('runs PostgreSQL 17 with the C collation, a health check and a volume, unpublished', () => {
-    expect(postgres).toContain('\n    image: postgres:17-alpine');
+    expect(postgres).toContain('\n    image: docker.io/library/postgres:17-alpine');
     expect(postgres).toContain('POSTGRES_INITDB_ARGS: --locale=C --encoding=UTF8');
     expect(postgres).toContain('POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ERROR - POSTGRES_PASSWORD is required}');
     expect(postgres).toContain('pg_isready -U ingressi -d ingressi');
