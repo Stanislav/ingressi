@@ -62,7 +62,8 @@ describe('OpenAPI 3.1 refractors for Swagger UI', () => {
       dependencies: Record<string, string>;
     };
     for (const name of ['@swagger-api/apidom-core', '@swagger-api/apidom-ns-openapi-3-1']) {
-      expect(ours[name], name).toBe(swaggerClient.dependencies[name]);
+      // swagger-client pins these exactly or as ^x.y.z; one copy is installed when ours is that version.
+      expect(ours[name], name).toBe(swaggerClient.dependencies[name].replace(/^\^/, ''));
     }
   });
 });
