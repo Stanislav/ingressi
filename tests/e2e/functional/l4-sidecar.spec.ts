@@ -17,6 +17,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { waitForTcpRoute, tcpSend } from '../../helpers/tcp';
+import { engineBin } from '../../helpers/engine';
 
 // Container name as defined in docker-compose.yml
 const L4_CONTAINER = 'ingressi-l4-ports';
@@ -89,7 +90,7 @@ test.describe.serial('L4 Port Manager Sidecar', () => {
     const state = await waitForL4Terminal(page, 90_000);
     expect(
       state,
-      'Expected "applied" but got "failed". Run: docker logs ingressi-l4-ports',
+      'Expected "applied" but got "failed". Run: docker logs ingressi-l4-ports (podman logs ingressi-l4-ports on Podman)',
     ).toBe('applied');
   });
 
@@ -117,7 +118,7 @@ test.describe.serial('L4 Port Manager Sidecar', () => {
     // docker-socket-proxy this always failed because docker compose needs
     // GET /networks/{id} to inspect caddy-network before reconnecting the container.
     // The fix adds NETWORKS: 1 so the network inspection succeeds.
-    execFileSync('docker', ['restart', L4_CONTAINER], {
+    execFileSync(engineBin(), ['restart', L4_CONTAINER], {
       stdio: 'inherit',
       cwd: process.cwd(),
       env: ENV,
@@ -130,7 +131,7 @@ test.describe.serial('L4 Port Manager Sidecar', () => {
       state,
       'Sidecar returned "failed" after restart. ' +
       'Likely cause: docker-socket-proxy is missing NETWORKS: 1. ' +
-      'Run: docker logs ingressi-l4-ports',
+      'Run: docker logs ingressi-l4-ports (podman logs ingressi-l4-ports on Podman)',
     ).toBe('applied');
   });
 
@@ -168,7 +169,7 @@ test.describe.serial('L4 Port Manager Sidecar', () => {
     // sidecar user (root) on the shared volume, so the web user (uid 10001)
     // cannot overwrite l4-ports.status — writing as root mirrors production.
     execFileSync(
-      'docker',
+      engineBin(),
       [
         'exec', '-u', 'root', 'ingressi-web', 'sh', '-c',
         `echo ${staleTs} > /app/data/.l4-apply.lock && ` +
@@ -181,18 +182,18 @@ test.describe.serial('L4 Port Manager Sidecar', () => {
     // restore forever ("already in progress, skipping...") and the status
     // would have stayed stuck on the planted "applying". With the fix it must
     // take over, re-apply, and reach a fresh terminal state.
-    execFileSync('docker', ['restart', L4_CONTAINER], { stdio: 'inherit', cwd: process.cwd(), env: ENV });
+    execFileSync(engineBin(), ['restart', L4_CONTAINER], { stdio: 'inherit', cwd: process.cwd(), env: ENV });
 
     const state = await waitForL4Terminal(page, 120_000, prevAppliedAt);
     expect(
       state,
       'Sidecar did not recover from the planted stale lock. ' +
-        'Check: docker logs ingressi-l4-ports',
+        'Check: docker logs ingressi-l4-ports (podman logs ingressi-l4-ports on Podman)',
     ).toBe('applied');
 
     // The lock must be gone after the recovered apply
     const lockGone = execFileSync(
-      'docker',
+      engineBin(),
       ['exec', 'ingressi-web', 'sh', '-c', 'test -f /app/data/.l4-apply.lock && echo present || echo absent'],
       { cwd: process.cwd(), env: ENV },
     ).toString().trim();

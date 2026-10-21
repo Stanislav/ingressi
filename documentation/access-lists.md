@@ -35,7 +35,7 @@ Some examples:
 - **Europe only.** Allow continent `EU`, allow `private_ranges`, default deny.
 - **An exception.** Allow `192.0.2.10`, then deny country `CN`: that one address gets in from China. In the other order, the deny comes first and the address is refused.
 
-Countries, continents and AS numbers come from the GeoLite2 databases, which the `geoipupdate` service refreshes every 72 hours. Without the databases those rules match nothing, so a deny by country lets everyone through and an allow by country lets nobody through.
+Countries, continents and AS numbers come from the GeoLite2 databases, which you put in the `geoip-data` volume ([geo-blocking.md](geo-blocking.md#geoip-setup)). Without the databases those rules match nothing, so a deny by country lets everyone through and an allow by country lets nobody through.
 
 ## Client addresses
 

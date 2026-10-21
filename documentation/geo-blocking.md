@@ -18,18 +18,19 @@ Rules can be **block** or **allow**. Allow rules win over block rules, so you ca
 
 ## GeoIP setup
 
-Geo blocking requires MaxMind GeoLite2 Country and/or ASN databases. Use the bundled `geoipupdate` service:
+Geo blocking requires MaxMind GeoLite2 Country and/or ASN databases. The stack does not download them for you; put them in the `geoip-data` volume:
 
 1. Register for a free MaxMind account at [maxmind.com](https://www.maxmind.com/)
-2. Generate a license key with `GeoLite2-Country` and `GeoLite2-ASN` permissions
-3. Add to your `.env`:
-   ```
-   GEOIPUPDATE_ACCOUNT_ID=your-account-id
-   GEOIPUPDATE_LICENSE_KEY=your-license-key
-   ```
-4. Start with the `geoipupdate` profile:
+2. Download the GeoLite2 databases (the `GeoLite2-Country` and `GeoLite2-ASN` `.mmdb` files)
+3. Copy them into the volume, as root (the volume belongs to the container user):
    ```bash
-   docker compose --profile geoipupdate up -d
+   # Docker
+   docker run --rm -v ingressi_geoip-data:/geoip -v "$PWD":/tmp docker.io/library/alpine:latest \
+     sh -c "cp /tmp/GeoLite2-Country.mmdb /tmp/GeoLite2-ASN.mmdb /geoip/ && chown 10000:10000 /geoip/*.mmdb"
+   # Podman
+   podman run --rm -v ingressi_geoip-data:/geoip -v "$PWD":/tmp docker.io/library/alpine:latest \
+     sh -c "cp /tmp/GeoLite2-Country.mmdb /tmp/GeoLite2-ASN.mmdb /geoip/ && chown 10000:10000 /geoip/*.mmdb"
    ```
+   The volume name depends on the project directory: `docker volume ls` (or `podman volume ls`) shows it.
 
-The databases are stored in the `geoip-data` Docker volume and shared between the web and Caddy containers.
+Caddy and the dashboard read the databases from the `geoip-data` volume and pick up a changed file within a minute; a restart is not needed.

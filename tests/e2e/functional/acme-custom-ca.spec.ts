@@ -15,6 +15,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { engineBin } from '../../helpers/engine';
 import tls from 'node:tls';
 
 const BASE_URL = 'http://localhost:3000';
@@ -31,7 +32,7 @@ function readStepCaRoot(timeoutMs = 60_000): string {
   while (Date.now() < deadline) {
     try {
       const out = execFileSync(
-        'docker',
+        engineBin(),
         ['exec', STEP_CA_CONTAINER, 'cat', '/home/step/certs/root_ca.crt'],
         { encoding: 'utf-8' },
       );

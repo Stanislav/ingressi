@@ -55,7 +55,9 @@ services:
     networks:
       - caddy-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -90,7 +92,7 @@ services:
       COMPOSE_EXTRA_FILE: /compose/tests/docker-compose.test.yml
   # Dex OIDC provider for OAuth E2E tests
   dex:
-    image: dexidp/dex:v2.41.1
+    image: docker.io/dexidp/dex:v2.41.1
     command: ["dex", "serve", "/etc/dex/config.yml"]
     volumes:
       - ./tests/dex/config.yml:/etc/dex/config.yml:ro
@@ -107,7 +109,7 @@ services:
   # The image's bundled CA expired in January 2026, so openldap-certs makes a
   # short-lived CA and server certificate for openldap on every fresh stack.
   openldap-certs:
-    image: osixia/openldap:1.5.0
+    image: docker.io/osixia/openldap:1.5.0
     entrypoint: ["sh", "-ec"]
     command:
       - |
@@ -122,7 +124,7 @@ services:
     volumes:
       - openldap-certs:/certs
   openldap:
-    image: osixia/openldap:1.5.0
+    image: docker.io/osixia/openldap:1.5.0
     hostname: openldap
     command: ["--copy-service"]
     environment:
@@ -142,7 +144,7 @@ services:
     networks:
       - caddy-network
     healthcheck:
-      test: ["CMD", "ldapsearch", "-x", "-H", "ldap://localhost", "-b", "ou=people,dc=example,dc=com", "-D", "cn=admin,dc=example,dc=com", "-w", "ldap-admin-password-2026", "(uid=e2e-admin)"]
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost -b ou=people,dc=example,dc=com -D cn=admin,dc=example,dc=com -w ldap-admin-password-2026 '(uid=e2e-admin)'"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -186,28 +188,28 @@ services:
   # Lightweight echo server reachable by Caddy as "echo-server:8080".
   # Returns a fixed body so tests can assert the proxy routed the request.
   echo-server:
-    image: hashicorp/http-echo
+    image: docker.io/hashicorp/http-echo
     command: ["-text=echo-ok", "-listen=:8080"]
     networks:
       - caddy-network
   # Second echo server for load-balancing tests.
   # Returns a different body so tests can distinguish which upstream served the request.
   echo-server-2:
-    image: hashicorp/http-echo
+    image: docker.io/hashicorp/http-echo
     command: ["-text=echo-server-2", "-listen=:8080"]
     networks:
       - caddy-network
   # Request-echo server: reflects the full HTTP request (method + path + headers) in the response body.
   # Used by path-prefix-rewrite tests to assert that Caddy rewrote the path before forwarding.
   whoami-server:
-    image: traefik/whoami
+    image: docker.io/traefik/whoami
     networks:
       - caddy-network
   # Mock Authelia-style forward-auth server reachable by Caddy as
   # "mock-forward-auth:9091". Backs the generic forward-auth functional tests
   # (tests/e2e/functional/forward-auth-generic.spec.ts).
   mock-forward-auth:
-    image: node:20-alpine
+    image: docker.io/library/node:20-alpine
     command: ["node", "/server.js"]
     volumes:
       - ./tests/mock-forward-auth/server.js:/server.js:ro
@@ -219,7 +221,7 @@ services:
   # (matching the portal cookie-domain entry) and replays the issued session
   # cookie against the protected hosts.
   authelia:
-    image: authelia/authelia:4.38
+    image: docker.io/authelia/authelia:4.38
     command: ["--config", "/config/configuration.yml"]
     volumes:
       - ./tests/authelia/configuration.yml:/config/configuration.yml:ro
@@ -235,7 +237,7 @@ services:
   # its own X-Api-Key for non-trusted clients, so the bypass-header path is
   # verified end-to-end against the real thing.
   moonraker:
-    image: mkuf/moonraker:latest
+    image: docker.io/mkuf/moonraker:latest
     container_name: moonraker-e2e
     command: ["-c", "/opt/printer_data/config/moonraker.conf", "-d", "/opt/printer_data"]
     volumes:
@@ -245,7 +247,7 @@ services:
   # TCP echo server for L4 proxy tests.
   # Listens on port 9000 and echoes back anything sent to it with a prefix.
   tcp-echo:
-    image: cjimti/go-echo
+    image: docker.io/cjimti/go-echo
     platform: linux/amd64
     environment:
       TCP_PORT: "9000"
@@ -255,7 +257,7 @@ services:
   # UDP echo server for L4 proxy tests.
   # Simple socat-based UDP echo: reflects any datagram back to sender.
   udp-echo:
-    image: alpine/socat
+    image: docker.io/library/alpine/socat
     command: ["UDP4-RECVFROM:9001,fork", "EXEC:cat"]
     networks:
       - caddy-network
@@ -267,7 +269,7 @@ services:
   # service for HTTP-01 / TLS-ALPN-01 challenge validation.
   step-ca:
     container_name: ingressi-step-ca
-    image: smallstep/step-ca:0.27.4
+    image: docker.io/smallstep/step-ca:0.27.4
     environment:
       DOCKER_STEPCA_INIT_NAME: "Ingressi E2E Step-CA"
       DOCKER_STEPCA_INIT_DNS_NAMES: "step-ca,localhost"
@@ -301,7 +303,7 @@ services:
         aliases:
           - ha-storage-e2e.test
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:2019/config/"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:2019/config/"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -321,7 +323,7 @@ services:
       # Valkey only: the slave cannot reach Step-CA (see ha-acme-network).
       ha-storage-network:
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:2019/config/"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:2019/config/"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -333,12 +335,12 @@ services:
   # the container.
   valkey:
     container_name: ingressi-valkey
-    image: valkey/valkey:9.1.2-alpine
+    image: docker.io/library/valkey/valkey:9.1.2-alpine
     command: ["valkey-server", "--requirepass", "e2e-valkey-password-2026", "--appendonly", "yes"]
     networks:
       - ha-storage-network
     healthcheck:
-      test: ["CMD", "valkey-cli", "-a", "e2e-valkey-password-2026", "--no-auth-warning", "ping"]
+      test: ["CMD-SHELL", "valkey-cli -a e2e-valkey-password-2026 --no-auth-warning ping"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -381,7 +383,9 @@ services:
       # Test connection for the shared certificate storage runs from here.
       ha-storage-network:
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -421,7 +425,9 @@ services:
           - web
       ha-storage-network:
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 5s
       timeout: 5s
       retries: 12

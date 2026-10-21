@@ -50,7 +50,7 @@ const STEP_DEFINITIONS: Record<SetupStepKey, StepDefinition> = {
   analytics: {
     title: "Turn on analytics",
     description:
-      "Traffic and WAF charts need the ClickHouse database. Set COMPOSE_PROFILES=clickhouse and a CLICKHOUSE_PASSWORD in .env, then run docker compose up -d.",
+      "Traffic and WAF charts need the ClickHouse database. Set a CLICKHOUSE_PASSWORD in .env, then run docker compose up -d.",
     action: null,
   },
   second_user: {

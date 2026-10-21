@@ -7,44 +7,14 @@
  */
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { composeArgs, e2eOnPostgres } from '../helpers/e2e-stack';
-
-type ContainerInfo = {
-  name: string;
-  service: string;
-  state: string;
-  exitCode: number;
-  health?: string;
-};
+import { listContainers, e2eOnPostgres, type ContainerInfo } from '../helpers/e2e-stack';
+import { engineBin } from '../helpers/engine';
 
 /** Services that do one job at start-up and exit (openldap-certs makes the test LDAP certificates). */
 const ONE_SHOT_SERVICES = new Set(['openldap-certs']);
 
 function getContainers(): ContainerInfo[] {
-  const output = execFileSync('docker', [
-    ...composeArgs(),
-    'ps', '--format', 'json', '-a',
-  ], {
-    cwd: process.cwd(),
-    env: { ...process.env, CLICKHOUSE_PASSWORD: 'test-clickhouse-password-2026' },
-    encoding: 'utf-8',
-  });
-
-  // docker compose ps --format json outputs one JSON object per line
-  return output
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const c = JSON.parse(line);
-      return {
-        name: c.Name ?? c.Service,
-        service: c.Service ?? '',
-        state: (c.State ?? '').toLowerCase(),
-        exitCode: Number(c.ExitCode ?? 0),
-        health: (c.Health ?? '').toLowerCase() || undefined,
-      };
-    });
+  return listContainers();
 }
 
 test.describe('Container health', () => {
@@ -82,7 +52,7 @@ test.describe('Container health', () => {
 
   test('clickhouse container is healthy', () => {
     const ch = containers.find((c) => c.name.includes('clickhouse'));
-    test.skip(!ch, 'ClickHouse container not started (profile not active — analytics disabled run)');
+    test.skip(!ch, 'ClickHouse container not started (analytics disabled run)');
     expect(ch!.health, `clickhouse container health: ${ch!.health}`).toBe('healthy');
   });
 
@@ -99,7 +69,7 @@ test.describe('Container health', () => {
     expect(l4!.state, `l4-port-manager state: ${l4!.state}`).toBe('running');
 
     // Verify it hasn't restarted (restart count > 0 means crash-loop)
-    const inspect = execFileSync('docker', [
+    const inspect = execFileSync(engineBin(), [
       'inspect', '--format', '{{.RestartCount}}', l4!.name,
     ], { encoding: 'utf-8' }).trim();
     const restartCount = Number(inspect);

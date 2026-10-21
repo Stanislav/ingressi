@@ -39,4 +39,18 @@ describe('docker-compose.yml on SELinux hosts', () => {
     const withSocket = [...services()].filter(([, body]) => body.includes('/var/run/docker.sock')).map(([name]) => name);
     expect(withSocket).toEqual(['docker-socket-proxy']);
   });
+
+  it('takes the engine socket from .env (Podman users have another path)', () => {
+    // Docker's socket by default, the Podman socket (rootless:
+    // /run/user/<uid>/podman/podman.sock) when ENGINE_SOCKET says so.
+    expect(services().get('docker-socket-proxy')).toContain(
+      '${ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro'
+    );
+  });
+
+  it('lets Caddy bind the low ports on Podman, where a non-root user may not', () => {
+    // Podman keeps net.ipv4.ip_unprivileged_port_start at 1024, so Caddy (which
+    // runs as an unprivileged user) could not bind 80 and 443.
+    expect(services().get('caddy')).toMatch(/\n {4}sysctls:\n {6}- net\.ipv4\.ip_unprivileged_port_start=0/);
+  });
 });

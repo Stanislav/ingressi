@@ -4,6 +4,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { composeArgs, composeEnv } from './e2e-stack';
+import { engineBin } from './engine';
 
 export type Replica = {
   /** INGRESSI_NODE_ID. */
@@ -27,7 +28,7 @@ export const PUBLIC_ORIGIN = 'http://localhost:3000';
 export const ADMIN = { username: 'testadmin', password: 'TestPassword2026!' };
 
 export function replicaCompose(args: string[], options: { timeoutMs?: number } = {}): string {
-  return execFileSync('docker', [...composeArgs('replicas'), ...args], {
+  return execFileSync(engineBin(), [...composeArgs('replicas'), ...args], {
     cwd: process.cwd(),
     env: composeEnv('replicas'),
     encoding: 'utf8',
@@ -38,7 +39,7 @@ export function replicaCompose(args: string[], options: { timeoutMs?: number } =
 
 export function containerLogs(container: string, since: Date): string {
   try {
-    return execFileSync('docker', ['logs', '--since', since.toISOString(), container], {
+    return execFileSync(engineBin(), ['logs', '--since', since.toISOString(), container], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 32 * 1024 * 1024,

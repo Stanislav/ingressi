@@ -1,0 +1,11 @@
+# The "analytics off" run (tests/playwright.no-clickhouse.config.ts): the
+# dashboard's own ClickHouse password is empty, so it collects nothing
+# (src/lib/clickhouse/client.ts) and the Analytics page explains that.
+#
+# ClickHouse itself is part of every stack now (no compose profile), so the
+# stack still needs a password for the database: the global set-up passes one
+# in the environment, and this file takes it away from the dashboard only.
+services:
+  web:
+    environment:
+      CLICKHOUSE_PASSWORD: ""

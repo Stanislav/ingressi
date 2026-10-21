@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { composeArgs, composeEnv, e2eStack } from './helpers/e2e-stack';
+import { engine, engineBin } from './helpers/engine';
 
 // The SQLite stack, or with E2E_STACK=postgres the same stack with the
 // dashboard on PostgreSQL (tests/playwright.pg.config.ts).
@@ -35,7 +36,7 @@ async function waitForHealth(): Promise<void> {
 
   console.error('[global-setup] Health check timed out. Container logs:');
   try {
-    execFileSync('docker', [...COMPOSE_ARGS, 'logs', '--tail=50'], { stdio: 'inherit', cwd: process.cwd(), env: ENV });
+    execFileSync(engineBin(), [...COMPOSE_ARGS, 'logs', '--tail=50'], { stdio: 'inherit', cwd: process.cwd(), env: ENV });
   } catch { /* ignore */ }
 
   throw new Error(`App did not become healthy within ${MAX_WAIT_MS}ms`);
@@ -55,7 +56,7 @@ async function waitForCaddyHealthy(): Promise<void> {
   const maxWait = 90_000;
   console.log('[global-setup] Verifying Caddy is healthy...');
   while (Date.now() - start < maxWait) {
-    const result = spawnSync('docker', ['inspect', '--format={{.State.Health.Status}}', 'ingressi-caddy'], {
+    const result = spawnSync(engineBin(), ['inspect', '--format={{.State.Health.Status}}', 'ingressi-caddy'], {
       encoding: 'utf-8',
       cwd: process.cwd(),
     });
@@ -94,10 +95,14 @@ async function seedAuthState(): Promise<void> {
 
 export default async function globalSetup() {
   console.log(`[global-setup] Starting Docker Compose test stack (${e2eStack()})...`);
-  execFileSync('docker', [
+  // `--wait` waits for every container to be healthy; Podman's compose
+  // provider has no such flag, so there the health checks below do the
+  // waiting (they poll the same states).
+  const wait = engine() === 'podman' ? [] : ['--wait', '--wait-timeout', '120'];
+  execFileSync(engineBin(), [
     ...COMPOSE_ARGS,
     'up', '-d', '--build',
-    '--wait', '--wait-timeout', '120',
+    ...wait,
   ], {
     stdio: 'inherit',
     cwd: process.cwd(),

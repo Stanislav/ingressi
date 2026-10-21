@@ -542,7 +542,7 @@ The **node id** is `INGRESSI_NODE_ID` (letters, digits, `.`, `_`, `-`, up to 64;
    ```
 
    `COMPOSE_FILE=docker-compose.yml:docker-compose.postgres.yml` in `.env` saves typing the files.
-2. In `.env`, add `replicas` to `COMPOSE_PROFILES` (`COMPOSE_PROFILES=clickhouse,replicas`) and list the replicas for Caddy: `DASHBOARD_UPSTREAMS=web:3000,web-2:3000`.
+2. In `.env`, list the replicas for Caddy: `DASHBOARD_UPSTREAMS=web:3000,web-2:3000`, and start the `replicas` profile: `docker compose --profile replicas up -d` (the profile is off by default, so `up -d` alone starts one dashboard).
 3. Run the same `up -d` again. `web` is recreated with the new list; `web-2` starts once `web` is healthy and joins. The **High availability** page shows both.
 4. Make the dashboard reachable through both replicas ([The dashboard](#the-dashboard)).
 

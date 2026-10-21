@@ -94,13 +94,16 @@ services:
     depends_on:
       caddy:
         condition: service_healthy
+      # ClickHouse is part of the stack (no compose profile): the dashboard
+      # writes its analytics rows to it.
       clickhouse:
         condition: service_healthy
-        required: false
     networks:
       - caddy-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -119,6 +122,13 @@ services:
         PUID: ${PUID:-10000}
         PGID: ${PGID:-10000}
     restart: unless-stopped
+    # Caddy runs as the unprivileged "caddy" user and binds ports 80 and 443.
+    # Docker lets any user in a container bind the low ports; Podman does not
+    # (net.ipv4.ip_unprivileged_port_start stays at 1024), and Caddy would exit
+    # with "listen tcp :80: bind: permission denied" and restart in a loop.
+    # The setting is namespaced, so it only affects this container.
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
     ports:
       - "80:80"
       - "80:80/udp"
@@ -148,18 +158,21 @@ services:
     networks:
       - caddy-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:2019/config/"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:2019/config/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
-  # Docker socket proxy: limits the Docker API that l4-port-manager can reach.
+  # Socket proxy: limits the container API that l4-port-manager can reach.
   # Allows container management and network inspection (needed by docker compose up
   # to inspect caddy-network when recreating the caddy container for L4 port changes).
+  # The socket it forwards is the engine's: Docker's by default, Podman's for
+  # Podman users (ENGINE_SOCKET in .env). Podman's socket serves the
+  # Docker-compatible API, so the same proxy and the same docker CLI work.
   docker-socket-proxy:
     container_name: ingressi-docker-proxy
-    image: tecnativa/docker-socket-proxy:latest
+    image: docker.io/tecnativa/docker-socket-proxy:latest
     restart: unless-stopped
     environment:
       CONTAINERS: 1
@@ -174,9 +187,12 @@ services:
       AUTH: 0
       BUILD: 0
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # The engine socket (see .env): /var/run/docker.sock for Docker,
+      # /run/user/<uid>/podman/podman.sock for rootless Podman,
+      # /run/podman/podman.sock for rootful Podman.
+      - ${ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
     # SELinux hosts (Fedora, RHEL, CoreOS) refuse a confined container the
-    # Docker socket, so every call through the proxy would fail with 503 and
+    # engine socket, so every call through the proxy would fail with 503 and
     # L4 port changes would never apply. Labelling stays on for every other
     # container; this one is already root-equivalent through the socket, and
     # the option does nothing on hosts without SELinux.
@@ -193,7 +209,9 @@ services:
 
   # L4 port manager sidecar: recreates the caddy container
   # when L4 proxy host ports change.
-  # Uses Docker socket proxy instead of direct Docker socket access.
+  # Uses the socket proxy instead of direct socket access. The proxy speaks
+  # the Docker API of Docker and of Podman alike, so the same sidecar drives
+  # both engines (DOCKER_HOST points at the proxy in both cases).
   l4-port-manager:
     container_name: ingressi-l4-ports
     image: ghcr.io/ingres-si/ingressi-l4-port-manager:latest
@@ -214,16 +232,15 @@ services:
         condition: service_healthy
       docker-socket-proxy:
         condition: service_started
-    # Reaches Docker only via the socket proxy (over the isolated socket-proxy
-    # network) and recreates caddy through the mounted compose dir, so it does
-    # not need the shared app network.
+    # Reaches the engine only via the socket proxy (over the isolated
+    # socket-proxy network) and recreates caddy through the mounted compose
+    # dir, so it does not need the shared app network.
     networks:
       - socket-proxy
 
   clickhouse:
     container_name: ingressi-clickhouse
-    image: clickhouse/clickhouse-server:latest-alpine
-    profiles: [clickhouse]
+    image: docker.io/clickhouse/clickhouse-server:latest-alpine
     restart: always
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-analytics}
@@ -250,20 +267,10 @@ services:
         soft: 262144
         hard: 262144
 
-  geoipupdate:
-    container_name: geoipupdate-${HOSTNAME}
-    image: ghcr.io/maxmind/geoipupdate
-    profiles: [geoipupdate]
-    restart: always
-    environment:
-      - GEOIPUPDATE_ACCOUNT_ID=${GEOIPUPDATE_ACCOUNT_ID:-}
-      - GEOIPUPDATE_LICENSE_KEY=${GEOIPUPDATE_LICENSE_KEY:-}
-      - 'GEOIPUPDATE_EDITION_IDS=GeoLite2-ASN GeoLite2-City GeoLite2-Country'
-      - GEOIPUPDATE_FREQUENCY=72
-    volumes:
-      - geoip-data:/usr/share/GeoIP:z
-    networks:
-      - caddy-network
+  # geoipupdate is gone: it needs a MaxMind account and license key, and the
+  # GeoLite2 databases are read from the geoip-data volume. Put them there
+  # yourself (documentation/geo-blocking.md); country, continent and AS
+  # number rules match nothing without them.
 
 networks:
   caddy-network:

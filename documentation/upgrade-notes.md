@@ -4,6 +4,10 @@ Pull the new images and recreate the containers with `docker compose pull && doc
 
 ## Upgrading to v2.4.1
 
+- **The stack runs on Podman.** The same `docker-compose.yml` works with `podman compose up -d`: the images are named with their registry, the engine's socket comes from `ENGINE_SOCKET` in `.env` (`/run/user/<uid>/podman/podman.sock` for rootless Podman), and Caddy may bind the low ports. Podman needs the Docker Compose v2 binary (`docker-compose`) as its compose provider; without it Podman falls back to `podman-compose`, which cannot run this stack. See [Running with Podman](../README.md#running-with-podman).
+- **ClickHouse is part of the stack; there is no `clickhouse` profile any more.** `CLICKHOUSE_PASSWORD` is required (compose refuses to start without it), and an install that had switched analytics off has to set one. To keep the dashboard from collecting anything, leave the password empty in the web service's environment (see [Analytics](analytics.md#disabling-analytics)).
+- **The `geoipupdate` service is gone.** It needed a MaxMind account and license key; the GeoLite2 databases now go into the `geoip-data` volume ([Geo blocking](geo-blocking.md#geoip-setup)). Without them, country and network rules match nothing, as before.
+- **`.env` gained variables** (`ENGINE_SOCKET`, `PRIMARY_DOMAIN`, `CADDY_GID`, `L4_PORT_MANAGER_POLL_INTERVAL` and the ones that were only documented before). Copy the new lines from `.env.example`; the values that are already in your `.env` stay.
 - **Alert channel and AI provider URLs may not point at a link-local address or at Caddy's admin API**: saving one is refused, and delivery to a channel stored earlier at such an address fails with "The endpoint is …, which is not allowed" instead of sending. Link-local (`169.254.0.0/16`, `fe80::/10`) is where cloud metadata services answer; private LAN addresses stay allowed.
 - **E-mail addresses need a domain of non-empty labels** (the ACME e-mail, an e-mail channel's sender): `user@example..com` and `user@.example.com` are rejected.
 

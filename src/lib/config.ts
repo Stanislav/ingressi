@@ -35,8 +35,24 @@ const isDevelopment = process.env.NODE_ENV === "development";
 const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build" || !process.env.NEXT_RUNTIME;
 const isRuntimeProduction = !isDevelopment && isNodeRuntime && !isBuildPhase;
 
+/**
+ * An environment variable's value, or undefined when it is not set.
+ *
+ * A value that still holds a "${...}" placeholder counts as not set: Podman's
+ * compose provider does not apply the defaults of docker-compose.yml, it
+ * passes the placeholder through when the variable is missing from .env.
+ * Such a value must not reach a URL or a credential.
+ */
+export function envValue(name: string): string | undefined {
+  const value = process.env[name];
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.startsWith("${") && trimmed.endsWith("}")) return undefined;
+  return value;
+}
+
 function resolveSessionSecret(): string {
-  const rawSecret = process.env.SESSION_SECRET ?? null;
+  const rawSecret = envValue("SESSION_SECRET") ?? null;
   const secret = rawSecret?.trim();
 
   // In development, allow missing secret
@@ -89,8 +105,8 @@ function resolveSessionSecret(): string {
 }
 
 function resolveAdminCredentials() {
-  const rawUsername = process.env.ADMIN_USERNAME ?? null;
-  const rawPassword = process.env.ADMIN_PASSWORD ?? null;
+  const rawUsername = envValue("ADMIN_USERNAME") ?? null;
+  const rawPassword = envValue("ADMIN_PASSWORD") ?? null;
   const username = rawUsername?.trim() || DEFAULT_ADMIN_USERNAME;
   const password = rawPassword?.trim() || DEFAULT_ADMIN_PASSWORD;
 
@@ -187,7 +203,7 @@ function getSessionSecret() {
  * contains a comma.
  */
 function resolvePreviousSessionSecrets(): string[] {
-  const raw = process.env.SESSION_SECRET_PREVIOUS?.trim();
+  const raw = envValue("SESSION_SECRET_PREVIOUS")?.trim();
   if (!raw) return [];
   const entries = [raw, ...raw.split(",").map((entry) => entry.trim())];
   return [...new Set(entries.filter(Boolean))];
@@ -201,13 +217,13 @@ export const config = {
   get previousSessionSecrets(): string[] {
     return resolvePreviousSessionSecrets();
   },
-  caddyApiUrl: process.env.CADDY_API_URL ?? DEFAULT_CADDY_URL,
+  caddyApiUrl: envValue("CADDY_API_URL") ?? DEFAULT_CADDY_URL,
   // Auto-recovery of the Caddy configuration on drift (restart/recreation).
   // Disable on instances that do not own the targeted Caddy (e.g. auxiliary
   // Ingressi instances sharing one Caddy in the e2e stack) — two enabled monitors
   // with different databases would endlessly fight over the configuration.
   caddyMonitorEnabled: process.env.CADDY_MONITOR_ENABLED !== "false",
-  baseUrl: process.env.BASE_URL ?? "http://localhost:3000",
+  baseUrl: envValue("BASE_URL") ?? "http://localhost:3000",
   get adminUsername() {
     return getAdminCredentials().username;
   },
@@ -226,16 +242,16 @@ export const config = {
   },
   oauth: {
     enabled: process.env.OAUTH_ENABLED === "true",
-    providerName: process.env.OAUTH_PROVIDER_NAME ?? "OAuth2",
-    clientId: process.env.OAUTH_CLIENT_ID ?? null,
-    clientSecret: process.env.OAUTH_CLIENT_SECRET ?? null,
-    issuer: process.env.OAUTH_ISSUER ?? null,
-    authorizationUrl: process.env.OAUTH_AUTHORIZATION_URL ?? null,
-    tokenUrl: process.env.OAUTH_TOKEN_URL ?? null,
-    userinfoUrl: process.env.OAUTH_USERINFO_URL ?? null,
+    providerName: envValue("OAUTH_PROVIDER_NAME") ?? "OAuth2",
+    clientId: envValue("OAUTH_CLIENT_ID") ?? null,
+    clientSecret: envValue("OAUTH_CLIENT_SECRET") ?? null,
+    issuer: envValue("OAUTH_ISSUER") ?? null,
+    authorizationUrl: envValue("OAUTH_AUTHORIZATION_URL") ?? null,
+    tokenUrl: envValue("OAUTH_TOKEN_URL") ?? null,
+    userinfoUrl: envValue("OAUTH_USERINFO_URL") ?? null,
     allowAutoLinking: process.env.OAUTH_ALLOW_AUTO_LINKING === "true",
   },
-  forwardAuthInternalUrl: process.env.FORWARD_AUTH_INTERNAL_URL ?? null,
+  forwardAuthInternalUrl: envValue("FORWARD_AUTH_INTERNAL_URL") ?? null,
   /**
    * Non-default external ports (e.g. "8443") on which forward-auth protected
    * hosts are served. Redirect targets and callback origins on any other
@@ -244,7 +260,7 @@ export const config = {
    */
   get forwardAuthAllowedPorts(): Set<string> {
     return new Set(
-      (process.env.FORWARD_AUTH_ALLOWED_PORTS ?? "")
+      (envValue("FORWARD_AUTH_ALLOWED_PORTS") ?? "")
         .split(",")
         .map((port) => port.trim())
         .filter((port) => /^[1-9]\d{0,4}$/.test(port) && Number(port) <= 65535)
@@ -270,7 +286,7 @@ export function validateProductionConfig() {
     // missing bearer credential. Validate this synchronously during startup.
     if (process.env.INSTANCE_MODE === "slave") {
       assertValidInstanceSyncToken(
-        process.env.INSTANCE_SYNC_TOKEN,
+        envValue("INSTANCE_SYNC_TOKEN"),
         "INSTANCE_SYNC_TOKEN for slave mode"
       );
     }

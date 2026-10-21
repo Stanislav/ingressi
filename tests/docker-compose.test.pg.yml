@@ -6,7 +6,7 @@
 services:
   postgres:
     container_name: ingressi-postgres
-    image: postgres:17-alpine
+    image: docker.io/library/postgres:17-alpine
     environment:
       POSTGRES_USER: ingressi
       POSTGRES_PASSWORD: "test-postgres-password-2026"

@@ -12,6 +12,11 @@
 #
 # Only ever recreates the caddy container — never touches any other service.
 #
+# The docker CLI drives the engine behind the socket proxy, which speaks the
+# Docker API of Docker and of Podman alike (the Podman socket serves the
+# Docker-compatible API), so this script works unchanged on both. The compose
+# labels it reads (com.docker.compose.project / .service) are set by both.
+#
 # Environment variables:
 #   DATA_DIR              - Path to shared data volume (default: /data)
 #   COMPOSE_DIR           - Path to compose files (default: /compose)

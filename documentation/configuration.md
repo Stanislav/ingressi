@@ -53,9 +53,19 @@ The web container is configured with environment variables. Copy `.env.example` 
 | `INSTANCE_PULL_RATE_MAX` | Master only: pull replica polls per client address and window (`INSTANCE_PULL_RATE_WINDOW_MS`, default 60000) | `300` | No |
 | `CLICKHOUSE_URL` | ClickHouse HTTP endpoint for analytics | `http://clickhouse:8123` | No |
 | `CLICKHOUSE_USER` | ClickHouse username | `ingressi` | No |
-| `CLICKHOUSE_PASSWORD` | ClickHouse password (`openssl rand -base64 32`). Required when the `clickhouse` profile is active. | None | No (required if analytics enabled) |
+| `CLICKHOUSE_PASSWORD` | ClickHouse password (`openssl rand -base64 32`). The stack runs ClickHouse, so compose refuses to start without it. | None | **Yes** |
 | `CLICKHOUSE_DB` | ClickHouse database name | `analytics` | No |
 | `CLICKHOUSE_RETENTION_DAYS` | Days analytics events are kept (see [Analytics](analytics.md#storage-and-retention)) | `30` | No |
+
+Variables of the stack itself, read by Compose and not by the web container:
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `ENGINE_SOCKET` | The engine's socket, mounted into the socket proxy that gives the L4 port manager access to the engine API. Docker: `/var/run/docker.sock`; Podman rootless: `/run/user/<uid>/podman/podman.sock`; Podman rootful: `/run/podman/podman.sock` | `/var/run/docker.sock` | No (on Podman: **Yes**) |
+| `PUID` / `PGID` | The user and group the web and Caddy containers run as, and the owner of the volumes they create | `10001` (web) / `10000` (Caddy) | No |
+| `CADDY_GID` | The group the dashboard uses to read Caddy's log files: the group of the Caddy user (the Caddy image's own `PGID`) | `10000` | No |
+| `PRIMARY_DOMAIN` | The domain Caddy serves before the first configuration is applied | `ingressi.localhost` | No |
+| `L4_PORT_MANAGER_POLL_INTERVAL` | Seconds between the L4 port manager's checks for new L4 ports | `2` | No |
 
 With the stock `docker-compose.yml`, the web container only receives the variables listed in the `web` service's `environment`; a value in `.env` for any other variable in this table has no effect until you add it there (for example `INSTANCE_MODE: ${INSTANCE_MODE:-}`; an empty value leaves the mode to the Instance sync page). Give numeric variables their documented default rather than an empty one, e.g. `LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}`: an empty value is read as 0.
 

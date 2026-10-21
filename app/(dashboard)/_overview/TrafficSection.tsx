@@ -187,8 +187,7 @@ export function TrafficUnavailable({ status }: { status: "disabled" | "unavailab
         title="Analytics are off"
         description={
           <>
-            Set <span className="num">COMPOSE_PROFILES=clickhouse</span> and a{" "}
-            <span className="num">CLICKHOUSE_PASSWORD</span> in <span className="num">.env</span>, then run{" "}
+            Set a <span className="num">CLICKHOUSE_PASSWORD</span> in <span className="num">.env</span>, then run{" "}
             <span className="num">docker compose up -d</span>.
           </>
         }

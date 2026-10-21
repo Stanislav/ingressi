@@ -11,7 +11,7 @@ import type { OverviewFirstRun, OverviewPermissions } from "@/src/lib/overview-s
 import type { SetupChecklistView, SetupStepKey, SetupStepView } from "@/src/lib/setup-checklist";
 
 /** The lines the analytics step asks to add to .env. */
-export const ANALYTICS_ENV_LINES = "COMPOSE_PROFILES=clickhouse\nCLICKHOUSE_PASSWORD=<the generated password>";
+export const ANALYTICS_ENV_LINES = "CLICKHOUSE_PASSWORD=<the generated password>";
 
 const num = (text: string) => <span className="num">{text}</span>;
 

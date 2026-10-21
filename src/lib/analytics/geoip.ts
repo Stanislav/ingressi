@@ -1,6 +1,6 @@
 /**
  * Country and network (autonomous system) of a client address, from the
- * GeoLite2 databases geoipupdate keeps in /usr/share/GeoIP. Both are
+ * GeoLite2 databases in /usr/share/GeoIP. Both are
  * optional: without a database the lookup answers null / 0, and analytics
  * simply lack that dimension.
  */
@@ -35,7 +35,7 @@ async function openReader<T extends CountryResponse | AsnResponse>(path: string,
     return null;
   }
   try {
-    // geoipupdate replaces the file every 72 hours; reload it when it does.
+    // The file is replaced now and then; reload it when it does.
     return await maxmind.open<T>(path, { watchForUpdates: true, watchForUpdatesNonPersistent: true });
   } catch (err) {
     console.warn(`[geoip] failed to load the ${label} database: ${(err as Error).message}`);

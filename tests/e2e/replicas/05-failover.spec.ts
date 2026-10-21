@@ -6,6 +6,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { engineBin } from '../../helpers/engine';
 import { httpGet, waitForStatus } from '../../helpers/http';
 import {
   REPLICAS,
@@ -25,7 +26,7 @@ const DOMAIN = 'replica-failover.test';
 /** Caddy's live configuration, or null while its admin API does not answer. */
 function liveCaddyConfig(): string | null {
   try {
-    return execFileSync('docker', ['exec', CADDY, 'wget', '-qO-', 'http://localhost:2019/config/'], {
+    return execFileSync(engineBin(), ['exec', CADDY, 'wget', '-qO-', 'http://localhost:2019/config/'], {
       encoding: 'utf8',
       timeout: 10_000,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -125,8 +126,8 @@ test.describe.serial('Two replicas: failover', () => {
     // the monitor applies the dashboard's configuration again.
     const baseline = liveCaddyConfig();
     expect(baseline).toContain(DOMAIN);
-    execFileSync('docker', ['exec', CADDY, 'rm', '-f', '/config/caddy/autosave.json']);
-    execFileSync('docker', ['restart', CADDY]);
+    execFileSync(engineBin(), ['exec', CADDY, 'rm', '-f', '/config/caddy/autosave.json']);
+    execFileSync(engineBin(), ['restart', CADDY]);
     await eventually('Caddy answering after the restart', async () => liveCaddyConfig(), 60_000, 500);
     await eventually('the new leader restoring the Caddy configuration', async () => (liveCaddyConfig()?.includes(DOMAIN) ? true : null), 120_000, 1_000);
     expect(containerLogs(follower.container, stoppedAt)).toContain('[CaddyMonitor] Configuration reapplied successfully');

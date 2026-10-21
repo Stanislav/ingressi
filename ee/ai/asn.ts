@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 /**
  * Autonomous-system lookups for the daily digest, from the GeoLite2-ASN
- * database the geoipupdate container keeps current (also used by the geo
- * blocker). Client addresses are looked up in this process and only the AS
+ * database in the geoip-data volume (also used by the geo blocker).
+ * Client addresses are looked up in this process and only the AS
  * number, organization and network range leave this module.
  */
 import { existsSync } from "node:fs";

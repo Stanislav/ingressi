@@ -545,8 +545,7 @@ export default function SecurityClient({ data }: { data: SecurityPageData }) {
             title="No events without analytics"
             description={
               <>
-                To keep them, add <span className="num">clickhouse</span> to <span className="num">COMPOSE_PROFILES</span> and set{" "}
-                <span className="num">CLICKHOUSE_PASSWORD</span> in <span className="num">.env</span>, then run{" "}
+                To keep them, set <span className="num">CLICKHOUSE_PASSWORD</span> in <span className="num">.env</span>, then run{" "}
                 <span className="num">docker compose up -d</span>.
               </>
             }

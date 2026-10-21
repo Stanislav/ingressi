@@ -17,6 +17,7 @@
  */
 import { test, expect, type Browser, type BrowserContext } from '@playwright/test';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { engineBin } from '../helpers/engine';
 import { writeSettingRow } from '../helpers/e2e-sql';
 import { escapeRegExp } from '../helpers/text';
 
@@ -38,9 +39,9 @@ const CONTAINERS = {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function docker(args: string[], options: { input?: string; allowFailure?: boolean } = {}): string {
+function engine(args: string[], options: { input?: string; allowFailure?: boolean } = {}): string {
   try {
-    return execFileSync('docker', args, {
+    return execFileSync(engineBin(), args, {
       encoding: 'utf-8',
       input: options.input,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -68,7 +69,7 @@ async function loginContext(browser: Browser, baseURL: string): Promise<BrowserC
 async function readStepCaRoot(timeoutMs = 60_000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const out = docker(['exec', CONTAINERS.stepCa, 'cat', '/home/step/certs/root_ca.crt'], { allowFailure: true });
+    const out = engine(['exec', CONTAINERS.stepCa, 'cat', '/home/step/certs/root_ca.crt'], { allowFailure: true });
     if (out.includes('BEGIN CERTIFICATE')) return out.trim();
     await sleep(2_000);
   }
@@ -76,12 +77,12 @@ async function readStepCaRoot(timeoutMs = 60_000): Promise<string> {
 }
 
 function valkey(...args: string[]): string {
-  return docker(['exec', CONTAINERS.valkey, 'valkey-cli', '-a', VALKEY_PASSWORD, '--no-auth-warning', ...args]);
+  return engine(['exec', CONTAINERS.valkey, 'valkey-cli', '-a', VALKEY_PASSWORD, '--no-auth-warning', ...args]);
 }
 
 /** The storage block a Caddy is running with, or null. */
 function liveStorage(container: string): Record<string, unknown> | null {
-  const out = docker(['exec', container, 'wget', '-qO-', 'http://localhost:2019/config/storage'], { allowFailure: true }).trim();
+  const out = engine(['exec', container, 'wget', '-qO-', 'http://localhost:2019/config/storage'], { allowFailure: true }).trim();
   if (!out || out === 'null') return null;
   try {
     return JSON.parse(out) as Record<string, unknown>;
@@ -111,7 +112,7 @@ function servedCertificate(webContainer: string): ServedCertificate {
     socket.on("error", (error) => { console.log(JSON.stringify({ error: String(error.code || error.message) })); process.exit(0); });
     socket.on("timeout", () => { console.log(JSON.stringify({ error: "timeout" })); process.exit(0); });
   `;
-  const out = docker(['exec', webContainer, 'bun', '-e', script], { allowFailure: true }).trim().split('\n').pop() ?? '';
+  const out = engine(['exec', webContainer, 'bun', '-e', script], { allowFailure: true }).trim().split('\n').pop() ?? '';
   try {
     return JSON.parse(out) as ServedCertificate;
   } catch {
@@ -136,7 +137,7 @@ async function waitForStepCaCertificate(webContainer: string, timeoutMs = 120_00
  * replays on its own stderr, so both streams are read.
  */
 function containerLogs(container: string, since: string): string {
-  const result = spawnSync('docker', ['logs', '--since', since, container], { encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024, timeout: 60_000 });
+  const result = spawnSync(engineBin(), ['logs', '--since', since, container], { encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024, timeout: 60_000 });
   return `${result.stdout ?? ''}${result.stderr ?? ''}`;
 }
 
@@ -168,7 +169,7 @@ function seedMasterStorage() {
 async function waitForCaddy(container: string, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (docker(['exec', container, 'wget', '-qO-', 'http://localhost:2019/config/'], { allowFailure: true })) return;
+    if (engine(['exec', container, 'wget', '-qO-', 'http://localhost:2019/config/'], { allowFailure: true })) return;
     await sleep(1_000);
   }
   throw new Error(`${container} did not come back`);
@@ -201,7 +202,7 @@ test.describe.serial('High availability: shared certificate storage (master + sl
   });
 
   test.afterAll(async () => {
-    docker(['start', CONTAINERS.caddySlave], { allowFailure: true });
+    engine(['start', CONTAINERS.caddySlave], { allowFailure: true });
     await waitForCaddy(CONTAINERS.caddySlave).catch(() => {});
     if (hostId !== undefined) {
       await master.request.delete(`${MASTER}/api/v1/proxy-hosts/${hostId}`, { headers: { Origin: MASTER } });
@@ -210,7 +211,7 @@ test.describe.serial('High availability: shared certificate storage (master + sl
     await master.request.delete(`${MASTER}/api/v1/high-availability/storage`, { headers: { Origin: MASTER } });
     await master.request.put(`${MASTER}/api/v1/settings/acme`, { data: { caUrl: '', caRootPem: '' }, headers: json });
     await master.request.post(`${MASTER}/api/v1/instances/sync`, { headers: { Origin: MASTER } });
-    docker(['exec', CONTAINERS.valkey, 'valkey-cli', '-a', VALKEY_PASSWORD, '--no-auth-warning', 'FLUSHALL'], { allowFailure: true });
+    engine(['exec', CONTAINERS.valkey, 'valkey-cli', '-a', VALKEY_PASSWORD, '--no-auth-warning', 'FLUSHALL'], { allowFailure: true });
     await master.close();
     await slave.close();
   });
@@ -245,7 +246,7 @@ test.describe.serial('High availability: shared certificate storage (master + sl
     const start = new Date().toISOString();
 
     // The slave's Caddy is down while the master obtains the certificate.
-    docker(['stop', CONTAINERS.caddySlave]);
+    engine(['stop', CONTAINERS.caddySlave]);
     const created = await master.request.post(`${MASTER}/api/v1/proxy-hosts`, {
       data: { name: 'HA shared storage', domains: [DOMAIN], upstreams: ['whoami-server:80'], sslForced: true },
       headers: json,
@@ -263,7 +264,7 @@ test.describe.serial('High availability: shared certificate storage (master + sl
 
     // The slave comes back and receives the host.
     const restarted = new Date().toISOString();
-    docker(['start', CONTAINERS.caddySlave]);
+    engine(['start', CONTAINERS.caddySlave]);
     await waitForCaddy(CONTAINERS.caddySlave);
     await expect.poll(async () => {
       const sync = await master.request.post(`${MASTER}/api/v1/instances/sync`, { headers: { Origin: MASTER } });

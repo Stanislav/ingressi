@@ -27,6 +27,32 @@ Sign in at `http://localhost:3000/login` with `ADMIN_USERNAME` (`admin` in `.env
 
 Data persists in Docker volumes (caddy-manager-data, caddy-data, caddy-config, caddy-logs, geoip-data, clickhouse-data, acme-ca). The environment variables are listed in the [configuration reference](documentation/configuration.md); before going to production, read [Security](documentation/security.md).
 
+## Running with Podman
+
+The same stack runs on Podman. Two things differ from Docker:
+
+```bash
+# 1. Podman needs the Docker Compose v2 binary (a single Go binary, no Docker
+#    daemon). Podman uses it as its compose provider, so "podman compose" is
+#    the Docker Compose you know. Without it, Podman falls back to
+#    podman-compose, which cannot run this stack (see below).
+curl -L -o /usr/local/bin/docker-compose \
+  https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)
+chmod +x /usr/local/bin/docker-compose
+
+# 2. The socket of the engine, in .env:
+#    Docker:            /var/run/docker.sock (the default)
+#    Podman, rootless:  /run/user/$(id -u)/podman/podman.sock
+#    Podman, rootful:   /run/podman/podman.sock
+echo "ENGINE_SOCKET=/run/user/$(id -u)/podman/podman.sock" >> .env
+
+podman compose up -d
+```
+
+Why the Compose v2 binary: the stack's L4 port manager recreates the Caddy container through the Compose API, and Podman's own compose provider (podman-compose) neither implements the Compose API Podman's socket serves the same way nor lets a container be replaced while others depend on it. With the Compose v2 binary, Podman runs the same Compose as Docker and every feature works.
+
+Podman's rootless containers cannot bind ports below 1024 unless the container asks for it; the stack sets `net.ipv4.ip_unprivileged_port_start=0` for Caddy, which Docker ignores (it allows it anyway).
+
 ## Upgrading from Caddy Proxy Manager
 
 Caddy Proxy Manager is now Ingressi. The old header, cookie and database names keep working; [upgrading-to-ingressi.md](documentation/upgrading-to-ingressi.md) lists every rename and what to change. Before any upgrade, read the [upgrade notes](documentation/upgrade-notes.md) of every version since yours, then run `docker compose pull && docker compose up -d`.

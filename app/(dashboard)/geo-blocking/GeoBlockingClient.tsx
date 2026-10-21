@@ -39,7 +39,7 @@ export default function GeoBlockingClient({ geoblock, geoip, canSave, canOpenSec
           {missing.length === geoip.length
             ? "The GeoLite2 databases are missing, so country, continent and network rules do not match."
             : `${missing.map((database) => database.name).join(" and ")} is missing, so the rules that need it do not match.`}{" "}
-          Turn on the geoipupdate service with a MaxMind account to download them.
+          Put the MaxMind GeoLite2 databases in the geoip-data volume to make them available (documentation/geo-blocking.md).
         </Banner>
       )}
       <SettingsGroupForms name="Geo blocking" canSave={canSave} onDirtyChange={onDirtyChange}>

@@ -83,7 +83,7 @@ describe('degraded states', () => {
     const html = render('', { analyticsEnabled: false });
     expect(html).toContain('Traffic analytics is off');
     expect(html).toContain('CLICKHOUSE_PASSWORD');
-    expect(html).toContain('COMPOSE_PROFILES');
+    expect(html).not.toContain('COMPOSE_PROFILES');
     expect(html).toContain('href="/analytics/settings"');
     expect(html).not.toContain('Export CSV');
     expect(html).not.toContain('Top dimensions');

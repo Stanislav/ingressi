@@ -16,6 +16,11 @@
 #   HA_S3_ACCESS_KEY_ID=...        MinIO's root user (letters and digits)
 #   HA_S3_SECRET_ACCESS_KEY=...    MinIO's root password (8 or more letters and digits)
 #
+# This overlay uses the `!reset` and `!override` YAML tags, which only Docker
+# Compose understands: it runs on Docker, not on Podman (whose compose
+# provider rejects the tags). The base stack (docker-compose.yml) runs on
+# both.
+#
 # Set it up from an install that ran without high availability: the first
 # leader turns that database (the caddy-manager-data volume) into the
 # cluster's first replica.
@@ -48,7 +53,9 @@ services:
     # A standby answers /api/health with 503 by design; the container is
     # healthy while the process runs.
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health?scope=live',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health?scope=live',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
     # Time to stop the dashboard, let Litestream send its last changes and
     # hand the lease over.
     stop_grace_period: 60s
@@ -74,7 +81,9 @@ services:
       - caddy-logs:/logs
       - acme-ca:/acme-ca
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health?scope=live',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health?scope=live',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
     stop_grace_period: 60s
     depends_on:
       caddy:
@@ -99,7 +108,7 @@ services:
 
   valkey:
     container_name: ingressi-valkey
-    image: valkey/valkey:8-alpine
+    image: docker.io/library/valkey/valkey:8-alpine
     restart: unless-stopped
     environment:
       VALKEY_PASSWORD: ${HA_REDIS_PASSWORD:?ERROR - HA_REDIS_PASSWORD is required}

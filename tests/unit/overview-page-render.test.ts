@@ -178,7 +178,8 @@ describe('the overview', () => {
   it('explains that analytics are off instead of showing empty figures', () => {
     const html = render(data({ traffic: traffic({ status: 'disabled' }), hosts: { status: 'disabled', total: 1, certificates: false, rows: [] } }));
     expect(html).toContain('Analytics are off');
-    expect(html).toContain('COMPOSE_PROFILES=clickhouse');
+    expect(html).toContain('CLICKHOUSE_PASSWORD');
+    expect(html).not.toContain('COMPOSE_PROFILES');
     expect(html).not.toContain('data-testid="overview-kpis"');
     expect(render(data({ traffic: traffic({ status: 'unavailable' }) }))).toContain('ClickHouse did not answer');
   });

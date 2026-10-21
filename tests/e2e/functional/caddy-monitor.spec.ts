@@ -15,6 +15,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { engineBin } from '../../helpers/engine';
 import { createHash } from 'node:crypto';
 import { createProxyHost } from '../../helpers/proxy-api';
 
@@ -27,7 +28,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function fetchLiveConfig(): string | null {
   try {
     return execFileSync(
-      'docker',
+      engineBin(),
       ['exec', CADDY, 'wget', '-qO-', 'http://localhost:2019/config/'],
       { encoding: 'utf-8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] },
     );
@@ -43,7 +44,7 @@ function hashOf(config: string | null): string | null {
 /** Web container log lines mentioning the monitor, since the given instant. */
 function monitorLogsSince(since: Date): string {
   const logs = execFileSync(
-    'docker',
+    engineBin(),
     ['logs', '--since', since.toISOString(), WEB],
     { encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024 },
   );
@@ -85,9 +86,9 @@ test.describe.serial('CaddyMonitor drift recovery', () => {
     // Delete the autosave so `caddy --resume` cannot restore the applied
     // config on boot — the container must come back with the image's default
     // Caddyfile, exactly like a recreated container with a wiped config volume.
-    execFileSync('docker', ['exec', CADDY, 'rm', '-f', '/config/caddy/autosave.json']);
+    execFileSync(engineBin(), ['exec', CADDY, 'rm', '-f', '/config/caddy/autosave.json']);
     const restartedAt = new Date();
-    execFileSync('docker', ['restart', CADDY]);
+    execFileSync(engineBin(), ['restart', CADDY]);
 
     // Caddy comes back serving something other than the applied config.
     let firstConfig: string | null = null;
@@ -131,7 +132,7 @@ test.describe.serial('CaddyMonitor drift recovery', () => {
     expect(hashOf(fetchLiveConfig())).toBe(hashOf(baselineConfig));
 
     const restartedAt = new Date();
-    execFileSync('docker', ['restart', CADDY]);
+    execFileSync(engineBin(), ['restart', CADDY]);
 
     let config: string | null = null;
     for (let i = 0; i < 60; i++) {

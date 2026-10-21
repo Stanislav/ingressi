@@ -8,14 +8,13 @@ Analytics uses a bundled ClickHouse instance for storing and querying traffic ev
 
 ### Enabling analytics (recommended)
 
-Analytics is enabled via the `clickhouse` Docker Compose profile. The default `.env.example` has it on:
+Analytics is on in the default `.env.example`: the stack runs ClickHouse, and the dashboard stores every request in it.
 
 ```env
-COMPOSE_PROFILES=clickhouse
 CLICKHOUSE_PASSWORD=
 ```
 
-Set `CLICKHOUSE_PASSWORD` to a generated value (`openssl rand -base64 32`); compose refuses to start the `clickhouse` profile while it is empty.
+Set `CLICKHOUSE_PASSWORD` to a generated value (`openssl rand -base64 32`); compose refuses to start while it is empty.
 
 Then start (or recreate) the stack:
 
@@ -25,24 +24,20 @@ docker compose up -d
 
 ### Disabling analytics
 
-Remove `clickhouse` from `COMPOSE_PROFILES` (or leave the variable empty) and omit `CLICKHOUSE_PASSWORD`:
+Leave `CLICKHOUSE_PASSWORD` empty in the **web** service's environment (an override file, or a `docker-compose.override.yml`):
 
-```env
-COMPOSE_PROFILES=
+```yaml
+services:
+  web:
+    environment:
+      CLICKHOUSE_PASSWORD: ""
 ```
 
 The web container starts normally without ClickHouse. The Analytics page shows a notice explaining that ClickHouse is not enabled, and no data is collected.
 
-### Combining profiles
+## GeoIP databases
 
-To run both analytics and GeoIP updates ([geo-blocking.md](geo-blocking.md#geoip-setup)) simultaneously, list both profiles:
-
-```env
-COMPOSE_PROFILES=clickhouse,geoipupdate
-CLICKHOUSE_PASSWORD=…
-GEOIPUPDATE_ACCOUNT_ID=…
-GEOIPUPDATE_LICENSE_KEY=…
-```
+The GeoLite2 databases are not part of the stack: put them in the `geoip-data` volume yourself ([geo-blocking.md](geo-blocking.md#geoip-setup)). Without them, country and network are empty and everything else works.
 
 ## What each request records
 
@@ -59,7 +54,7 @@ The web container reads Caddy's access log every 30 seconds and stores one row p
 | WAF rule | `waf_rule_id` | The rule that made the WAF block the request; `0` otherwise. |
 | Blocked, rate limited | `is_blocked`, `is_rate_limited` | Kept for older queries: geo blocking and Caddy's rate limiter. |
 
-geoipupdate downloads both GeoLite2 databases (the `geoipupdate` compose profile). Without them, country and network are empty and everything else works.
+The GeoLite2 databases in the `geoip-data` volume ([geo-blocking.md](geo-blocking.md#geoip-setup)) provide the country and the network. Without them, country and network are empty and everything else works.
 
 The upstream a request went to and the upstream's own status are not recorded: Caddy's access log does not carry them.
 

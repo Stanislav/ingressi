@@ -1,4 +1,5 @@
-FROM docker:cli
+# Fully qualified: podman does not resolve short image names.
+FROM docker.io/library/docker:cli
 
 # Only need docker compose CLI and basic shell tools
 RUN apk add --no-cache bash
@@ -11,5 +12,11 @@ RUN chmod +x /entrypoint.sh
 # caddy-manager-data volume (owned by the web container's UID).
 # Access to the Docker API is scoped via the docker-socket-proxy service
 # which restricts to GET/POST on /containers/ and /compose/ only.
+#
+# The same image drives Podman: the proxy forwards the Docker-compatible
+# API of the Podman socket, and `docker compose` speaks it (network and
+# container create/start, health-gated depends_on, --force-recreate). The
+# compose labels it sets (com.docker.compose.project/service) are the ones
+# the entrypoint reads, so the sidecar works the same on both engines.
 
 ENTRYPOINT ["/entrypoint.sh"]

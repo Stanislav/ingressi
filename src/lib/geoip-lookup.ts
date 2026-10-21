@@ -1,7 +1,7 @@
 /**
  * Approximate place of a client address, from the GeoLite2 Country and ASN
- * databases the geoipupdate container keeps current (the geo blocker uses
- * them too). Lookups happen in this process when a page or the API asks;
+ * databases in the geoip-data volume (the geo blocker uses them too).
+ * Lookups happen in this process when a page or the API asks;
  * nothing they return is stored. Either database may be missing: the lookup
  * then answers with what the other one knows, or null.
  */
@@ -33,7 +33,7 @@ const state = globalThis as typeof globalThis & {
   };
 };
 
-/** How often a changed database file (geoipupdate) is picked up. */
+/** How often a changed database file is picked up. */
 const RECHECK_MS = 10 * 60 * 1000;
 
 async function open<T extends AsnResponse | CountryResponse>(path: string): Promise<Opened<T>> {

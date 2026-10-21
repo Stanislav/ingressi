@@ -7,9 +7,10 @@
  * ever connects to them; they only give the accounts their labels.
  */
 import { execFileSync } from 'node:child_process';
+import { engineBin } from '../helpers/engine';
 
 const COMPOSE_ARGS = ['compose', '-f', 'docker-compose.yml', '-f', 'tests/docker-compose.test.yml'];
-const ENV = { ...process.env, CLICKHOUSE_PASSWORD: 'test-clickhouse-password-2026', COMPOSE_PROFILES: 'clickhouse' };
+const ENV = { ...process.env, CLICKHOUSE_PASSWORD: 'test-clickhouse-password-2026' };
 
 export type SignInSource = 'password' | 'oidc' | 'saml' | 'ldap' | 'scim';
 
@@ -28,7 +29,7 @@ export type DbToken = { email: string; name: string; token: string; lastUsedHour
 
 /** Runs a Bun script in the web container with `data` as JSON in SEED_JSON; returns its standard output. */
 export function runInWeb(script: string, data: unknown): string {
-  return execFileSync('docker', [...COMPOSE_ARGS, 'exec', '-T', '-e', `SEED_JSON=${JSON.stringify(data)}`, 'web', 'bun', '-e', script], {
+  return execFileSync(engineBin(), [...COMPOSE_ARGS, 'exec', '-T', '-e', `SEED_JSON=${JSON.stringify(data)}`, 'web', 'bun', '-e', script], {
     cwd: process.cwd(),
     env: ENV,
     encoding: 'utf8',

@@ -12,15 +12,19 @@
 #   POSTGRES_PASSWORD=...   letters and digits only, it goes into a URL as it
 #                           is: openssl rand -hex 32
 #
+# This overlay uses the `!reset` and `!override` YAML tags, which only Docker
+# Compose understands: it runs on Docker, not on Podman (whose compose
+# provider rejects the tags). The base stack (docker-compose.yml) runs on
+# both.
+#
 # For a fresh install, or after copying an SQLite install to this database
 # with the copy tool (documentation/postgresql.md, "Moving an existing
 # install"). The database is created with the C collation that Ingressi
 # requires, and is reachable only on the compose network.
 #
-# A second replica (web-2) runs with the "replicas" profile. Set in .env:
+# A second replica (web-2) runs with the "replicas" profile:
 #
-#   COMPOSE_PROFILES=clickhouse,replicas
-#   DASHBOARD_UPSTREAMS=web:3000,web-2:3000
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml --profile replicas up -d
 #
 # DASHBOARD_UPSTREAMS makes Caddy send forward-auth checks, sign-in callbacks
 # and the API gate to both replicas, with health checks and retries. The
@@ -43,7 +47,7 @@ x-postgres-environment: &postgres-environment
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: docker.io/library/postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ingressi

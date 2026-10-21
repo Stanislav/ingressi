@@ -92,7 +92,9 @@ services:
       caddy-network:
       postgres-network:
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 3s
       timeout: 5s
       retries: 40
@@ -115,7 +117,9 @@ services:
       caddy-network:
       postgres-network:
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health?scope=live',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))"]
+      # CMD-SHELL, not CMD: Podman runs every health check through a shell,
+      # and the shell cannot parse the JavaScript.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health?scope=live',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 3s
       timeout: 5s
       retries: 40

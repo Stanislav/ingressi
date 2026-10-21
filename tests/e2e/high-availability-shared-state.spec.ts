@@ -12,6 +12,7 @@
  */
 import { test, expect, type Browser, type BrowserContext } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { engineBin } from '../helpers/engine';
 import { randomBytes } from 'node:crypto';
 import { webSql, writeSettingRow } from '../helpers/e2e-sql';
 
@@ -26,9 +27,9 @@ const NAMESPACE = `${PREFIX}:${GENERATION}:`;
 const CONTAINERS = { valkey: 'ingressi-valkey', webMaster: 'ingressi-web-master' };
 const json = { 'Content-Type': 'application/json', Origin: MASTER };
 
-function docker(args: string[], options: { allowFailure?: boolean } = {}): string {
+function engine(args: string[], options: { allowFailure?: boolean } = {}): string {
   try {
-    return execFileSync('docker', args, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024, timeout: 60_000 });
+    return execFileSync(engineBin(), args, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024, timeout: 60_000 });
   } catch (error) {
     if (options.allowFailure) return '';
     throw error;
@@ -36,7 +37,7 @@ function docker(args: string[], options: { allowFailure?: boolean } = {}): strin
 }
 
 function valkey(...args: string[]): string {
-  return docker(['exec', CONTAINERS.valkey, 'valkey-cli', '-a', VALKEY_PASSWORD, '--no-auth-warning', ...args]);
+  return engine(['exec', CONTAINERS.valkey, 'valkey-cli', '-a', VALKEY_PASSWORD, '--no-auth-warning', ...args]);
 }
 
 function namespaceKeys(): string[] {

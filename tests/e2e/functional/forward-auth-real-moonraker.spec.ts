@@ -20,6 +20,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { engineBin } from '../../helpers/engine';
 import { httpsGet, wssHandshakeTls } from '../../helpers/https';
 import { createSelfSignedServerCertificate } from '../../helpers/certs';
 import { autheliaFirstFactor } from '../../helpers/authelia';
@@ -34,7 +35,7 @@ let moonrakerApiKey: string;
 /** Fetch Moonraker's runtime API key from a trusted localhost call inside the container. */
 function fetchMoonrakerApiKey(): string {
   const out = execFileSync(
-    'docker',
+    engineBin(),
     [
       'exec', 'moonraker-e2e', '/opt/venv/bin/python', '-c',
       "import urllib.request, json; print(json.load(urllib.request.urlopen('http://127.0.0.1:7125/access/api_key'))['result'])",

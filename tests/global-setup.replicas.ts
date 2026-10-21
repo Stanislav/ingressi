@@ -7,6 +7,7 @@
 import { chromium } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { engine } from './helpers/engine';
 import {
   ADMIN,
   REPLICA_A,
@@ -46,12 +47,16 @@ async function seedAuthState(): Promise<void> {
 
 export default async function globalSetup() {
   const startedAt = new Date();
+  // `--wait` waits for every container to be healthy; Podman's compose
+  // provider has no such flag, so there the health checks below do the
+  // waiting (they poll the same states).
+  const wait = engine() === 'podman' ? [] : ['--wait', '--wait-timeout', '240'];
   log('Building and starting PostgreSQL, Caddy and replica A...');
-  replicaCompose(['up', '-d', '--build', '--wait', '--wait-timeout', '240', ...BASE_SERVICES, REPLICA_A.service], { timeoutMs: 1_200_000 });
+  replicaCompose(['up', '-d', '--build', ...wait, ...BASE_SERVICES, REPLICA_A.service], { timeoutMs: 1_200_000 });
   await waitForHealthy(REPLICA_A);
 
   log('Starting replica B...');
-  replicaCompose(['up', '-d', '--wait', '--wait-timeout', '240', REPLICA_B.service]);
+  replicaCompose(['up', '-d', ...wait, REPLICA_B.service]);
   try {
     await Promise.all(REPLICAS.map((replica) => waitForHealthy(replica)));
     const leader = await soleLeader(REPLICAS, 60_000);

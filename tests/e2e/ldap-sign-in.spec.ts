@@ -10,6 +10,7 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { engineBin } from '../helpers/engine';
 import { webDb, webSql } from '../helpers/e2e-sql';
 import { composeArgs, composeEnv } from '../helpers/e2e-stack';
 
@@ -23,7 +24,7 @@ const USERS = {
 };
 
 function compose(args: string[], input?: string): string {
-  return execFileSync('docker', [...composeArgs(), ...args], {
+  return execFileSync(engineBin(), [...composeArgs(), ...args], {
     cwd: process.cwd(),
     env: composeEnv(),
     stdio: ['pipe', 'pipe', 'pipe'],

@@ -256,8 +256,7 @@ function AnalyticsOff({ canReadSettings }: { canReadSettings: boolean }) {
         title="Traffic analytics is off"
         description={
           <>
-            To turn it on, add <code className="num">clickhouse</code> to <code className="num">COMPOSE_PROFILES</code> and set{" "}
-            <code className="num">CLICKHOUSE_PASSWORD</code> in <code className="num">.env</code>, then run <code className="num">docker compose up -d</code>.
+            To turn it on, set <code className="num">CLICKHOUSE_PASSWORD</code> in <code className="num">.env</code>, then run <code className="num">docker compose up -d</code>.
           </>
         }
         action={
