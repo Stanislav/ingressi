@@ -2,6 +2,11 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.8.2
+
+- **Dependency updates.** Next.js 16.4.2, better-auth 1.7.10, maplibre-gl 6.14, nodemailer 10.1, the Radix UI packages, zod, React 19.3.1 and the Anthropic SDK, among others, and a refreshed set of Caddy compatibility pins. The API reference (Swagger UI) uses ApiDOM 1.12.1.
+- No database migration.
+
 ## Upgrading to v2.8.1
 
 - **WebSockets work on hosts with sign-in.** Every WebSocket on a host with the built-in sign-in, Authentik or another forward-auth server failed with 502, signed in or not, because the sign-in check inherited the client's upgrade headers. The check no longer does.
